@@ -1,19 +1,28 @@
 {
   "name": "kaleidosync",
   "version": "1.0.0",
-  "description": "Standalone Windows audio-reactive WebGL2 visualizer using WASAPI loopback",
+  "description": "Cross-platform (Windows, macOS, Linux) audio-reactive WebGL2 kaleidoscope visualizer",
+  "homepage": "https://github.com/dev-raman05/audio-video-engine",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "smoke": "electron . --smoke-test",
-    "dist": "electron-builder --win dir"
+    "dist": "electron-builder",
+    "dist:local": "electron-builder --win dir -c.electronDist=node_modules/electron/dist",
+    "dist:win": "electron-builder --win nsis zip --x64",
+    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64",
+    "dist:linux": "electron-builder --linux AppImage deb tar.gz --x64"
   },
-  "author": "Yoram",
+  "author": "Raman Mishra <yoraman31@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev-raman05/audio-video-engine.git"
+  },
   "build": {
-    "appId": "com.yoram.kaleidosync",
+    "appId": "com.raman.kaleidosync",
     "productName": "KaleidoSync",
-    "electronDist": "node_modules/electron/dist",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "main.js",
       "preload.js",
@@ -21,12 +30,80 @@
       "package.json"
     ],
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "win": {
+      "icon": "build/icon.png",
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.music",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "KaleidoSync analyzes audio input locally when Microphone or Line-In source is selected.",
+        "NSScreenCaptureUsageDescription": "KaleidoSync uses macOS system audio capture to react to music playing on your Mac. No screen video is recorded or sent anywhere."
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "AudioVideo;Music;",
+      "maintainer": "Raman Mishra <yoraman31@gmail.com>",
+      "synopsis": "Audio-reactive WebGL2 kaleidoscope visualizer",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
           "arch": [
             "x64"
           ]

@@ -1,0 +1,121 @@
+name: Build and Release KaleidoSync
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    fail-fast: false
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            cmd: npm run dist:win -- --publish never
+          - os: macos-latest
+            platform: mac
+            cmd: npm run dist:mac -- --publish never
+          - os: ubuntu-latest
+            platform: linux
+            cmd: npm run dist:linux -- --publish never
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check scripts
+        shell: bash
+        run: |
+          node --check main.js
+          node --check preload.js
+          for f in renderer/js/*.js; do
+            node --check "$f"
+          done
+
+      - name: Build application installers
+        run: ${{ matrix.cmd }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaleidosync-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            VER=$(node -p "require('./package.json').version")
+            TAG="v${VER}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: KaleidoSync ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release-assets/*
+          body: |
+            ## KaleidoSync ${{ steps.tag.outputs.tag }} — Cross-Platform Audio-Reactive Visual Engine
+
+            Download the installer or archive for your operating system below:
+
+            - **Windows (`x64`):** Run `KaleidoSync-Setup-*-x64.exe` (installer) or extract `KaleidoSync-*-win-x64.zip` and run `KaleidoSync.exe`.
+            - **macOS (`arm64` Apple Silicon & `x64` Intel):** Open the matching `.dmg` (or `.zip`) and drag **KaleidoSync** to Applications. Because the app is unsigned, on first launch **right-click → Open** (or run `xattr -cr /Applications/KaleidoSync.app`) and allow **Screen & System Audio Recording** when prompted for system audio loopback.
+            - **Linux (`x64`):** Run the `.AppImage` (`chmod +x KaleidoSync-*.AppImage && ./KaleidoSync-*.AppImage`), install the `.deb` (`sudo apt install ./KaleidoSync-*.deb`), or extract `.tar.gz`. On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your `Monitor of ...` device under **Microphone / Line-In**.

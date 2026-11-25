@@ -30,7 +30,7 @@ if errorlevel 1 (
 )
 
 echo Rebuilding standalone KaleidoSync app...
-call npm.cmd run dist
+call npm.cmd run dist:local
 if errorlevel 1 (
     echo [ERROR] Build failed.
     pause
