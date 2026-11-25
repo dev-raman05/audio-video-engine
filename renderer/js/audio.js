@@ -18,10 +18,12 @@
       this.timeData = null;
       this.logMap = null;
       this.spectrum = new Float32Array(SPECTRUM_BINS);
+      this.prevSpectrum = new Float32Array(SPECTRUM_BINS);
       this.waveform = new Float32Array(SPECTRUM_BINS);
       this.audioTex = new Uint8Array(SPECTRUM_BINS * 2);
 
-      this.bands = { bass: 0, lowMid: 0, mid: 0, high: 0 };
+      this.bands = { subBass: 0, bass: 0, lowMid: 0, mid: 0, high: 0 };
+      this.spectralFlux = 0;
       this.level = 0;
       this.beatPulse = 0;
       this.beatCount = 0;
@@ -164,7 +166,6 @@
           throw new Error('No system loopback audio track returned');
         }
 
-        // Wait 500ms and verify the audio track stayed live after stopping video
         await new Promise((resolve) => setTimeout(resolve, 500));
         if (audioTracks[0].readyState !== 'live') {
           for (const t of stream.getTracks()) t.stop();
@@ -185,7 +186,6 @@
           };
         }
 
-        // MediaStreamAudioSourceNode feeds ONLY the analyser (never destination)
         const audioOnlyStream = new MediaStream(audioTracks);
         this.sourceNode = this.ctx.createMediaStreamSource(audioOnlyStream);
         this.sourceNode.connect(this.analyser);
@@ -258,10 +258,8 @@
       const master = this.ctx.createGain();
       master.gain.value = 0.85;
       master.connect(this.analyser);
-      // Demo audio is silent to speakers (connected only to analyser).
       this.sourceNode = master;
 
-      // Ambient pad chord oscillators
       const freqs = [110, 164.81, 220, 277.18, 329.63];
       const padGain = this.ctx.createGain();
       padGain.gain.value = 0.12;
@@ -281,7 +279,6 @@
       }
       this.demoNodes.push(padGain, padFilter);
 
-      // Prebuild short noise buffer for hi-hats
       const noiseLen = Math.floor(this.ctx.sampleRate * 0.08);
       const noiseBuf = this.ctx.createBuffer(1, noiseLen, this.ctx.sampleRate);
       const ch = noiseBuf.getChannelData(0);
@@ -294,7 +291,6 @@
         if (!this.ctx || this.sourceType !== 'demo') return;
         const now = this.ctx.currentTime;
 
-        // Kick every 0.5s
         const kickOsc = this.ctx.createOscillator();
         const kickGain = this.ctx.createGain();
         kickOsc.type = 'sine';
@@ -307,7 +303,6 @@
         kickOsc.start(now);
         kickOsc.stop(now + 0.26);
 
-        // Off-beat / 8th hi-hat burst + filter sweep
         const hatSrc = this.ctx.createBufferSource();
         hatSrc.buffer = noiseBuf;
         const hatFilter = this.ctx.createBiquadFilter();
@@ -369,7 +364,6 @@
       const maxDb = -25;
       const dbSpan = maxDb - minDb;
 
-      // Resample waveform to 512 and compute RMS level
       let sumSq = 0;
       const timeLen = this.timeData.length;
       for (let i = 0; i < SPECTRUM_BINS; i++) {
@@ -381,12 +375,12 @@
       }
       const rawRms = Math.sqrt(sumSq / SPECTRUM_BINS);
 
-      // Build log-spaced 512-bin spectrum (30 Hz - 16 kHz)
       const map = this.logMap;
       const binCount = this.analyser.frequencyBinCount;
       const nyquist = (this.ctx ? this.ctx.sampleRate : 48000) * 0.5;
 
       let rawMaxSpec = 0;
+      let fluxSum = 0;
       for (let i = 0; i < SPECTRUM_BINS; i++) {
         const b0 = map[i * 2];
         const b1 = map[i * 2 + 1];
@@ -399,11 +393,16 @@
         const prev = this.spectrum[i];
         const coeff = norm > prev ? 0.6 : 0.15;
         const val = prev + (norm - prev) * coeff;
+        const diff = val - this.prevSpectrum[i];
+        if (diff > 0) fluxSum += diff;
+        this.prevSpectrum[i] = val;
         this.spectrum[i] = val;
         if (val > rawMaxSpec) rawMaxSpec = val;
       }
 
-      // Auto-gain peak tracker so quiet tracks stay expressive
+      const rawFlux = Math.min(1, (fluxSum / SPECTRUM_BINS) * 14.0);
+      this.spectralFlux = this.spectralFlux * 0.55 + rawFlux * 0.45;
+
       const instantEnergy = Math.max(rawRms * 3.2 * sens, rawMaxSpec * 0.75);
       this.autoGainPeak = Math.max(
         instantEnergy,
@@ -412,7 +411,6 @@
       );
       const gainScale = Math.min(2.2, 0.85 / this.autoGainPeak);
 
-      // Compute frequency bands (20-150, 150-500, 500-2000, 2000-12000 Hz)
       const bandAvg = (fLow, fHigh) => {
         const b0 = Math.max(1, Math.floor((fLow / nyquist) * binCount));
         const b1 = Math.min(binCount - 1, Math.ceil((fHigh / nyquist) * binCount));
@@ -427,11 +425,13 @@
         return count > 0 ? Math.min(1, (sum / count) * gainScale) : 0;
       };
 
+      const subBass = bandAvg(20, 70);
       const bass = bandAvg(20, 150);
       const lowMid = bandAvg(150, 500);
       const mid = bandAvg(500, 2000);
       const high = bandAvg(2000, 12000);
 
+      this.bands.subBass = this.bands.subBass * 0.5 + subBass * 0.5;
       this.bands.bass = this.bands.bass * 0.55 + bass * 0.45;
       this.bands.lowMid = this.bands.lowMid * 0.6 + lowMid * 0.4;
       this.bands.mid = this.bands.mid * 0.6 + mid * 0.4;
@@ -440,7 +440,6 @@
       const scaledLevel = Math.min(1, Math.max(rawRms * 4.0 * sens * gainScale, bass * 0.6 + mid * 0.4));
       this.level = this.level * 0.6 + scaledLevel * 0.4;
 
-      // Silence check (raw energy before auto-gain inflation)
       const rawActivity = Math.max(rawRms * 2.5, rawMaxSpec * 0.35);
       if (rawActivity < 0.01) {
         this.silentTime += clampedDt;
@@ -452,7 +451,6 @@
         this.silent = false;
       }
 
-      // Beat detection on bass energy
       this.bassHistory[this.bassHistIdx] = bass;
       this.bassHistIdx = (this.bassHistIdx + 1) % BEAT_HISTORY_LEN;
       if (this.bassHistCount < BEAT_HISTORY_LEN) this.bassHistCount++;
@@ -485,7 +483,6 @@
         this.beatPulse *= Math.exp(-6.0 * clampedDt);
       }
 
-      // Pack 512x2 R8 texture: row 0 = spectrum, row 1 = waveform * 0.5 + 0.5
       for (let i = 0; i < SPECTRUM_BINS; i++) {
         const sVal = Math.max(0, Math.min(1, this.spectrum[i] * gainScale));
         this.audioTex[i] = Math.round(sVal * 255);

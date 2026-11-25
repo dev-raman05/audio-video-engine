@@ -10,6 +10,7 @@
       this.onConnectAudio = opts.onConnectAudio;
       this.onApplyPreset = opts.onApplyPreset;
       this.onRefreshMics = opts.onRefreshMics;
+      this.onMouseMove = opts.onMouseMove;
 
       this.panel = document.getElementById('control-panel');
       this.statusDot = document.getElementById('audio-dot');
@@ -52,7 +53,8 @@
         btn.type = 'button';
         btn.className = 'chip-btn';
         btn.dataset.preset = preset.id;
-        btn.innerHTML = `<span class="chip-key">${idx + 1}</span><span>${preset.name}</span>`;
+        const badgeHtml = idx < 10 ? `<span class="chip-key">${(idx + 1) % 10}</span>` : '';
+        btn.innerHTML = `${badgeHtml}<span>${preset.name}</span>`;
         btn.addEventListener('click', () => this.onApplyPreset(preset.id));
         this.presetGrid.appendChild(btn);
       });
@@ -114,6 +116,8 @@
       bindRange('slider-intensity', 'intensity', (v) => `${Math.round(v * 100)}%`);
       bindRange('slider-trails', 'trails', (v) => `${Math.round(v * 100)}%`);
       bindRange('slider-sensitivity', 'sensitivity', (v) => `${v.toFixed(2)}x`);
+      bindRange('slider-bloom', 'bloom', (v) => `${Math.round(v * 100)}%`);
+      bindRange('slider-chromatic', 'chromatic', (v) => `${Math.round(v * 100)}%`);
 
       const scaleSel = document.getElementById('render-scale-select');
       scaleSel.addEventListener('change', () => {
@@ -143,6 +147,7 @@
 
       bindToggle('toggle-auto-cycle', 'autoCycle');
       bindToggle('toggle-beat-flash', 'beatFlash');
+      bindToggle('toggle-beat-shake', 'beatShake');
       bindToggle('toggle-always-top', 'alwaysOnTop');
       bindToggle('toggle-keep-awake', 'keepAwake');
       bindToggle('toggle-show-fps', 'showFps');
@@ -180,6 +185,7 @@
         this.showToast(`Display ${res.index + 1} / ${res.count}`);
       });
       document.getElementById('btn-hide-ui').addEventListener('click', () => this.setUiHidden(true));
+      document.getElementById('btn-shuffle').addEventListener('click', () => this.shuffleModeAndPalette());
       document.getElementById('btn-help').addEventListener('click', () => this.toggleHelp());
       document.getElementById('help-close-btn').addEventListener('click', () => this.toggleHelp(false));
       this.helpOverlay.addEventListener('click', (e) => {
@@ -229,14 +235,17 @@
         } else if (key === 'p' || key === 'P') {
           e.preventDefault();
           this.stepPalette(1);
+        } else if (key === 'r' || key === 'R') {
+          e.preventDefault();
+          this.shuffleModeAndPalette();
         } else if (key === 'a' || key === 'A') {
           e.preventDefault();
           this.settings.autoCycle = !this.settings.autoCycle;
           this.onSettingChange('autoCycle', this.settings.autoCycle);
           this.syncFromSettings();
           this.showToast(`Auto-cycle: ${this.settings.autoCycle ? 'ON' : 'OFF'}`);
-        } else if (/^[1-9]$/.test(key)) {
-          const idx = parseInt(key, 10) - 1;
+        } else if (/^[0-9]$/.test(key)) {
+          const idx = key === '0' ? 9 : parseInt(key, 10) - 1;
           const preset = window.KS.GENRE_PRESETS[idx];
           if (preset) {
             this.onApplyPreset(preset.id);
@@ -246,14 +255,19 @@
     }
 
     _bindAutoHide() {
-      const wake = () => {
+      const wake = (e) => {
         document.body.classList.remove('idle-hidden');
         this._resetIdleTimer();
+        if (e && typeof this.onMouseMove === 'function') {
+          const nx = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+          const ny = -((e.clientY / Math.max(1, window.innerHeight)) * 2 - 1);
+          this.onMouseMove(nx, ny);
+        }
       };
       window.addEventListener('mousemove', wake);
-      window.addEventListener('pointerdown', () => {
+      window.addEventListener('pointerdown', (e) => {
         this.isPointerDown = true;
-        wake();
+        wake(e);
       });
       window.addEventListener('pointerup', () => {
         this.isPointerDown = false;
@@ -313,6 +327,24 @@
       this.onSettingChange('palette', pal.id);
       this.syncFromSettings();
       this.showToast(`Palette: ${pal.name}`);
+    }
+
+    shuffleModeAndPalette() {
+      if (this.compiledModes.length === 0) return;
+      const pals = window.KS.PALETTES;
+      let nextMode = this.compiledModes[Math.floor(Math.random() * this.compiledModes.length)];
+      if (this.compiledModes.length > 1 && nextMode.id === this.settings.mode) {
+        const idx = this.compiledModes.indexOf(nextMode);
+        nextMode = this.compiledModes[(idx + 1) % this.compiledModes.length];
+      }
+      const nextPal = pals[Math.floor(Math.random() * pals.length)];
+      this.settings.mode = nextMode.id;
+      this.settings.palette = nextPal.id;
+      this.settings.preset = '';
+      this.onSettingChange('mode', nextMode.id);
+      this.onSettingChange('palette', nextPal.id);
+      this.syncFromSettings();
+      this.showToast(`${nextMode.name} · ${nextPal.name}`);
     }
 
     adjustIntensity(delta) {
@@ -393,12 +425,21 @@
       document.getElementById('slider-sensitivity').value = this.settings.sensitivity;
       document.getElementById('slider-sensitivity-val').textContent = `${this.settings.sensitivity.toFixed(2)}x`;
 
+      const bloomVal = this.settings.bloom != null ? this.settings.bloom : 0.7;
+      document.getElementById('slider-bloom').value = bloomVal;
+      document.getElementById('slider-bloom-val').textContent = `${Math.round(bloomVal * 100)}%`;
+
+      const chromVal = this.settings.chromatic != null ? this.settings.chromatic : 0.65;
+      document.getElementById('slider-chromatic').value = chromVal;
+      document.getElementById('slider-chromatic-val').textContent = `${Math.round(chromVal * 100)}%`;
+
       document.getElementById('render-scale-select').value = String(this.settings.renderScale);
       document.getElementById('fps-cap-select').value = String(this.settings.fpsCap);
       document.getElementById('cycle-interval-select').value = String(this.settings.cycleInterval);
 
       document.getElementById('toggle-auto-cycle').checked = !!this.settings.autoCycle;
       document.getElementById('toggle-beat-flash').checked = !!this.settings.beatFlash;
+      document.getElementById('toggle-beat-shake').checked = this.settings.beatShake !== false;
       document.getElementById('toggle-always-top').checked = !!this.settings.alwaysOnTop;
       document.getElementById('toggle-keep-awake').checked = !!this.settings.keepAwake;
       document.getElementById('toggle-show-fps').checked = !!this.settings.showFps;

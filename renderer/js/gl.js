@@ -23,6 +23,8 @@
       this.time = 0;
       this.morphRemaining = 0;
       this.histIdx = 0;
+      this.mouse = [0, 0];
+      this.targetMouse = [0, 0];
 
       if (!this.gl) return;
 
@@ -40,6 +42,11 @@
       this._initAudioTexture();
       this.sceneFbo = null;
       this.historyFbos = [null, null];
+    }
+
+    setMouse(nx, ny) {
+      this.targetMouse[0] = Math.max(-1, Math.min(1, nx || 0));
+      this.targetMouse[1] = Math.max(-1, Math.min(1, ny || 0));
     }
 
     _compileShader(type, source, label) {
@@ -91,9 +98,11 @@
       const modeUniforms = [
         'uTime',
         'uRes',
+        'uSubBass',
         'uBass',
         'uMid',
         'uHigh',
+        'uFlux',
         'uLevel',
         'uBeat',
         'uBeatCount',
@@ -101,6 +110,7 @@
         'uSpeed',
         'uIntensity',
         'uHueShift',
+        'uMouse',
         'uPalA',
         'uPalB',
         'uPalC',
@@ -139,6 +149,8 @@
           'uBass',
           'uSpeed',
           'uTime',
+          'uBeatShake',
+          'uMouse',
         ]);
       }
 
@@ -148,7 +160,16 @@
         this.failedModes.push({ id: 'present', name: 'Present', error: presRes.error });
       } else {
         this.presProg = presRes.program;
-        this.presU = this._getUniforms(this.presProg, ['uInput', 'uBeat', 'uBeatFlash']);
+        this.presU = this._getUniforms(this.presProg, [
+          'uInput',
+          'uRes',
+          'uBeat',
+          'uBass',
+          'uBeatFlash',
+          'uBeatShake',
+          'uBloom',
+          'uChromatic',
+        ]);
       }
     }
 
@@ -256,6 +277,9 @@
       const clampedDt = Math.min(0.1, Math.max(0.001, dt || 0.016));
       this.time += clampedDt * settings.speed * (0.6 + audio.bands.bass);
 
+      this.mouse[0] += (this.targetMouse[0] - this.mouse[0]) * Math.min(1, clampedDt * 5.0);
+      this.mouse[1] += (this.targetMouse[1] - this.mouse[1]) * Math.min(1, clampedDt * 5.0);
+
       if (this.morphRemaining > 0) {
         this.morphRemaining = Math.max(0, this.morphRemaining - clampedDt);
       }
@@ -269,9 +293,11 @@
       const u = modeEntry.u;
       gl.uniform1f(u.uTime, this.time);
       gl.uniform2f(u.uRes, this.width, this.height);
+      gl.uniform1f(u.uSubBass, audio.bands.subBass || audio.bands.bass);
       gl.uniform1f(u.uBass, audio.bands.bass);
       gl.uniform1f(u.uMid, audio.bands.mid);
       gl.uniform1f(u.uHigh, audio.bands.high);
+      gl.uniform1f(u.uFlux, audio.spectralFlux || 0);
       gl.uniform1f(u.uLevel, audio.level);
       gl.uniform1f(u.uBeat, audio.beatPulse);
       gl.uniform1f(u.uBeatCount, audio.beatCount);
@@ -279,6 +305,7 @@
       gl.uniform1f(u.uSpeed, settings.speed);
       gl.uniform1f(u.uIntensity, settings.intensity);
       gl.uniform1f(u.uHueShift, (audio.beatCount % 16) * 0.02);
+      gl.uniform2f(u.uMouse, this.mouse[0], this.mouse[1]);
       gl.uniform3fv(u.uPalA, pal.a);
       gl.uniform3fv(u.uPalB, pal.b);
       gl.uniform3fv(u.uPalC, pal.c);
@@ -294,6 +321,7 @@
       const prevIdx = this.histIdx;
       const nextIdx = 1 - prevIdx;
       const effectiveTrails = this.morphRemaining > 0 ? Math.max(settings.trails, 0.95) : settings.trails;
+      const beatShakeFlag = settings.beatShake !== false ? 1.0 : 0.0;
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.historyFbos[nextIdx].fbo);
       gl.useProgram(this.compProg);
@@ -310,6 +338,8 @@
       gl.uniform1f(this.compU.uBass, audio.bands.bass);
       gl.uniform1f(this.compU.uSpeed, settings.speed);
       gl.uniform1f(this.compU.uTime, this.time);
+      gl.uniform1f(this.compU.uBeatShake, beatShakeFlag);
+      gl.uniform2f(this.compU.uMouse, this.mouse[0], this.mouse[1]);
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -321,8 +351,13 @@
       gl.bindTexture(gl.TEXTURE_2D, this.historyFbos[nextIdx].tex);
       gl.uniform1i(this.presU.uInput, 0);
 
+      gl.uniform2f(this.presU.uRes, this.width, this.height);
       gl.uniform1f(this.presU.uBeat, audio.beatPulse);
+      gl.uniform1f(this.presU.uBass, audio.bands.bass);
       gl.uniform1f(this.presU.uBeatFlash, settings.beatFlash ? 1.0 : 0.0);
+      gl.uniform1f(this.presU.uBeatShake, beatShakeFlag);
+      gl.uniform1f(this.presU.uBloom, settings.bloom != null ? settings.bloom : 0.7);
+      gl.uniform1f(this.presU.uChromatic, settings.chromatic != null ? settings.chromatic : 0.65);
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 

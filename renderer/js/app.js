@@ -60,6 +60,7 @@
         const devs = await audio.listAudioInputs();
         ui.populateMicDevices(devs);
       },
+      onMouseMove: (nx, ny) => gl.setMouse(nx, ny),
     });
 
     audio.onStatusChange = (info) => ui.updateAudioStatus(info);
@@ -165,7 +166,7 @@
         settings.mode = mode.id;
         gl.triggerModeMorph();
         ui.syncFromSettings();
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 450));
         await window.kaleido.capture(`mode-${mode.id}`);
       }
 

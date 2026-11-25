@@ -19,9 +19,11 @@ out vec4 fragColor;
 
 uniform float uTime;
 uniform vec2 uRes;
+uniform float uSubBass;
 uniform float uBass;
 uniform float uMid;
 uniform float uHigh;
+uniform float uFlux;
 uniform float uLevel;
 uniform float uBeat;
 uniform float uBeatCount;
@@ -29,6 +31,7 @@ uniform float uSegments;
 uniform float uSpeed;
 uniform float uIntensity;
 uniform float uHueShift;
+uniform vec2 uMouse;
 uniform vec3 uPalA;
 uniform vec3 uPalB;
 uniform vec3 uPalC;
@@ -98,6 +101,7 @@ float fbm(vec2 p) {
 vec2 normUv() {
   vec2 p = (vUv - 0.5) * 2.0;
   p.x *= uRes.x / max(1.0, uRes.y);
+  p += uMouse * 0.08;
   return p;
 }
 `;
@@ -337,7 +341,6 @@ void main() {
     if (h > 0.68) {
       vec2 starPos = (vec2(fract(h * 31.7), fract(h * 73.1)) - 0.5) * 0.55;
       vec2 dVec = gv - starPos;
-      // Streak radially on beats
       dVec.y /= 1.0 + uBeat * 2.5 + uHigh * 1.2;
       float d = length(dVec);
       float star = (0.018 / (d + 0.012)) * smoothstep(0.45, 0.05, d);
@@ -377,7 +380,6 @@ void main() {
   float cellBand = spec(clamp(fract(length(id) * 0.19), 0.05, 0.9));
   float hexLine = exp(-abs(hd - (0.44 - cellBand * 0.14)) * 32.0);
 
-  // Flower-of-life pulsing circle overlay
   float flower = 0.0;
   for (int i = 0; i < 6; i++) {
     float ang = float(i) * TAU / 6.0 + uTime * 0.18;
@@ -422,6 +424,452 @@ void main() {
 }
 `,
     },
+    {
+      id: 'sub-808-shockwave',
+      name: '808 Sub Shockwave',
+      tags: ['Hip-Hop', '808 Trap'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  float rRaw = length(p);
+  float subKick = uSubBass * 0.22 + uBeat * 0.16;
+  // Sub-bass gravity lens pinch
+  vec2 lensP = p * (1.0 - subKick * exp(-rRaw * 2.2));
+  lensP *= rot(uTime * 0.09);
+  vec2 k = kaleido(lensP, uSegments);
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  vec3 col = vec3(0.015, 0.008, 0.025);
+
+  // Expanding concentric 808 shockwave rings
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float phase = fract(uTime * 0.42 - fi * 0.166);
+    float ringR = phase * 1.45;
+    float s = spec(0.02 + fi * 0.12);
+    float thick = 0.012 + uSubBass * 0.025;
+    float d = abs(r - ringR);
+    float waveRing = thick / (d + 0.006);
+    float fade = (1.0 - phase) * (0.45 + s * 0.9 + uBeat * 0.7);
+    col += pal(phase * 0.65 + fi * 0.12) * waveRing * fade * 0.55;
+  }
+
+  // Sharp radial 808 EQ spokes
+  float spokeCount = 16.0;
+  float spokeAng = fract((a / TAU) * spokeCount + 0.5) - 0.5;
+  float spokeMask = smoothstep(0.28, 0.04, abs(spokeAng));
+  float eqVal = spec(clamp(fract(a * 1.5), 0.04, 0.88));
+  float spokeLen = 0.22 + eqVal * 0.75 * uIntensity;
+  float inSpoke = smoothstep(0.16, 0.2, r) * smoothstep(spokeLen + 0.02, spokeLen - 0.02, r);
+  col += pal(eqVal * 0.8 + 0.2) * spokeMask * inSpoke * (0.6 + uMid * 0.8);
+
+  // Hi-hat gold sparks in outer field
+  float sparkGrid = hash(floor(k * 14.0 + floor(uTime * 6.0)));
+  float sparks = smoothstep(0.95, 0.995, sparkGrid) * uHigh * smoothstep(0.2, 0.9, r);
+  col += pal(0.85) * sparks * 2.2;
+
+  // Heavy core pulse
+  float core = exp(-r * (4.5 - uSubBass * 2.0)) * (0.7 + uBeat * 1.2);
+  col += pal(0.1) * core;
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'boom-bap-vortex',
+      name: 'Boom-Bap Vinyl Vortex',
+      tags: ['Hip-Hop', 'Beats'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  float scratch = sin(uBeatCount * 1.9 + uTime * 3.0) * uBeat * 0.45;
+  p *= rot(uTime * 0.45 + scratch);
+  vec2 k = mix(p, kaleido(p, max(4.0, uSegments)), 0.45);
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  // Vinyl groove rings modulated by live waveform
+  float w = wave(fract(a / TAU + 0.5));
+  float grooveR = r + w * 0.035 * (0.4 + uLevel);
+  float grooves = sin(grooveR * 120.0) * 0.5 + 0.5;
+  float discMask = smoothstep(0.92, 0.88, r) * smoothstep(0.18, 0.21, r);
+
+  float s = spec(clamp((r - 0.18) / 0.72, 0.02, 0.95));
+  float specGlow = pow(s, 1.4) * 1.3;
+
+  // Anisotropic vinyl sheen across 2 diagonal highlights
+  float sheen = pow(abs(cos(a * 2.0 + uTime * 0.3)), 6.0) * 0.55;
+
+  vec3 col = pal(r * 0.75 + s * 0.45 + uTime * 0.04) * discMask * (0.28 + 0.55 * grooves + specGlow + sheen);
+
+  // Crossfader angular slices flashing on beat
+  float slice = smoothstep(0.06, 0.0, abs(sin(a * 4.0 + uBeatCount * 0.7))) * uBeat * discMask;
+  col += pal(0.65) * slice * 0.9;
+
+  // Center vinyl label + spindle
+  float label = smoothstep(0.2, 0.17, r) * smoothstep(0.03, 0.045, r);
+  col += pal(0.25 + uBass * 0.3) * label * (0.85 + uBass * 0.8);
+  col += pal(0.05) * exp(-abs(r - 0.9) * 35.0) * (0.5 + uBass);
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'indie-dreamscape',
+      name: 'Indie Dreamscape',
+      tags: ['Indie', 'Dream Pop'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  vec2 k = mix(p, kaleido(p, uSegments), 0.35);
+
+  // Warm analog sky gradient
+  float skyT = clamp(p.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 col = pal(skyT * 0.45 + uTime * 0.02) * (0.22 + 0.25 * uLevel);
+
+  // Layered dreamy waveform horizon ribbons
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float normI = fi / 6.0;
+    float wx = fract(k.x * 0.35 + fi * 0.13 + uTime * 0.04);
+    float wv = wave(wx) * (0.14 + uMid * 0.22);
+    float sp = spec(0.08 + normI * 0.7) * 0.16;
+    float yLine = -0.32 + fi * 0.12 + sin(k.x * 2.2 + uTime * 0.4 + fi) * 0.08 + wv + sp;
+    float d = abs(k.y - yLine);
+    float ribbon = 0.012 / (d + 0.008);
+    float fill = smoothstep(yLine + 0.02, yLine - 0.35, k.y) * 0.16;
+    vec3 rCol = pal(normI * 0.75 + 0.15 + uTime * 0.03);
+    col += rCol * (ribbon * 0.48 + fill) * (0.65 + uMid * 0.6);
+  }
+
+  // Soft floating bokeh light orbs
+  for (int j = 0; j < 8; j++) {
+    float fj = float(j);
+    vec2 center = vec2(
+      sin(uTime * 0.28 + fj * 1.7) * 0.95,
+      cos(uTime * 0.23 + fj * 2.3) * 0.55
+    );
+    float radius = 0.11 + 0.06 * sin(fj + uTime * 0.6) + uHigh * 0.08;
+    float d = length(k - center);
+    float orb = smoothstep(radius, radius * 0.25, d) * 0.35 + exp(-d * 10.0) * 0.45;
+    col += pal(fj * 0.14 + 0.5) * orb * (0.45 + uHigh * 0.8 + uBeat * 0.3);
+  }
+
+  // Analog tape shimmer
+  float grain = (hash(vUv * 400.0 + uTime * 20.0) - 0.5) * 0.04;
+  col += grain;
+
+  fragColor = vec4(max(col, 0.0) * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'indie-prism-waves',
+      name: 'Vinyl & Prism Waves',
+      tags: ['Indie', 'Alt Rock'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  vec2 k = mix(p, kaleido(p, max(2.0, min(8.0, uSegments))), 0.4);
+  vec3 col = vec3(0.01, 0.012, 0.022);
+
+  // 9 stacked Joy-Division / Unknown Pleasures perspective ridges with prism dispersion
+  for (int i = 0; i < 9; i++) {
+    float fi = float(i);
+    float normI = fi / 9.0;
+    float baseY = -0.58 + fi * 0.145;
+
+    float xNorm = clamp(abs(k.x) * 0.65, 0.0, 1.0);
+    float env = exp(-xNorm * xNorm * 3.8);
+    float freqSample = spec(clamp(0.04 + xNorm * 0.65 + normI * 0.25, 0.02, 0.96));
+    float wSample = wave(fract(k.x * 0.4 + normI * 0.2 + uTime * 0.06));
+
+    float ridge = baseY + (freqSample * 0.34 + wSample * 0.09) * env * (0.65 + uMid * 0.9);
+    float d = abs(k.y - ridge);
+    float line = 0.0085 / (d + 0.004);
+
+    // Subtle prism RGB dispersion across ridge crest
+    vec3 prism = vec3(
+      0.007 / (abs(k.y - ridge - 0.008 * (0.5 + uHigh)) + 0.005),
+      line,
+      0.007 / (abs(k.y - ridge + 0.008 * (0.5 + uHigh)) + 0.005)
+    );
+    vec3 tint = pal(normI * 0.85 + freqSample * 0.35 + uTime * 0.04);
+    col += mix(tint * line, prism * tint, 0.55) * (0.45 + freqSample * 0.9);
+  }
+
+  // Subtle prism diagonal flare on beats
+  float flare = exp(-abs(k.x - k.y * 0.6) * 8.0) * (0.15 + uBeat * 0.55);
+  col += pal(0.45) * flare;
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'rock-overdrive',
+      name: 'Amp Overdrive',
+      tags: ['Rock', 'Arena'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  vec2 k = kaleido(p, uSegments);
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  vec3 col = vec3(0.015, 0.01, 0.012);
+
+  // 6 vibrating guitar strings across symmetric space
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float normI = fi / 6.0;
+    float s = spec(0.08 + normI * 0.72);
+    float amp = (0.04 + s * 0.16 + uMid * 0.09) * uIntensity;
+    float stringPos = -0.35 + fi * 0.14;
+    float vib = sin(k.x * (18.0 + fi * 5.0) + uTime * (12.0 + fi * 2.5)) * amp * exp(-abs(k.x) * 0.45);
+    float d = abs(k.y - (stringPos + vib));
+    float glow = 0.009 / (d + 0.004);
+    col += pal(normI * 0.7 + s * 0.4) * glow * (0.55 + s * 1.1);
+  }
+
+  // Arena spotlight beams flaring on power chords
+  float powerChord = clamp(uBass * 0.6 + uMid * 0.7 + uBeat * 0.5, 0.0, 1.5);
+  float beam = pow(abs(cos(a * 3.0 + uTime * 0.55)), 10.0) * exp(-r * 0.9);
+  col += pal(0.15 + uTime * 0.05) * beam * powerChord * 1.6;
+
+  // Overdrive tube plasma core
+  float plasma = fbm(k * 3.2 - vec2(uTime * 0.8, 0.0));
+  col += pal(plasma * 0.9) * plasma * exp(-r * 1.5) * (0.4 + uFlux * 1.4);
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'metal-inferno',
+      name: 'Inferno Mosh',
+      tags: ['Metal', 'Heavy'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  p *= 1.0 - uBeat * 0.16;
+  p *= rot(uTime * 0.24);
+  vec2 k = kaleido(p, max(6.0, uSegments));
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  // Sharp gothic / metal blade geometry
+  float blade = abs(sin(a * 4.0 + r * 6.0 - uTime * 1.6));
+  float edge = exp(-abs(blade - 0.5) * (18.0 - uBass * 8.0));
+
+  // Branching electric lightning arcs on double-kick & spectral flux
+  float boltNoise = fbm(vec2(k.x * 6.0 + uTime * 3.5, k.y * 6.0 - uTime * 2.5));
+  float bolt = exp(-abs(boltNoise - 0.5) * 32.0) * (0.35 + uFlux * 2.2 + uBeat * 1.3);
+
+  // Molten magma floor cracks
+  float cracks = abs(fbm(k * 4.2 + uTime * 0.35) - 0.5);
+  float magma = smoothstep(0.09, 0.005, cracks) * (0.5 + uSubBass * 1.4);
+
+  float s = spec(clamp(r * 0.5, 0.02, 0.95));
+  vec3 col = pal(r * 0.5 + s * 0.4) * edge * (0.55 + s * 1.2);
+  col += pal(0.25 + uFlux * 0.3) * bolt * 1.25;
+  col += pal(0.05) * magma * 1.5;
+
+  // Strobe kick core
+  col += pal(0.8) * exp(-r * 5.0) * (0.4 + uBeat * 1.4);
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'prog-tesseract',
+      name: 'Polyrhythm Tesseract',
+      tags: ['Progressive', 'Math'],
+      frag: `
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / max(1e-5, dot(ba, ba)), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+void main() {
+  vec2 p = normUv();
+  vec2 k = mix(p, kaleido(p, uSegments), 0.65);
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  vec3 col = vec3(0.008, 0.012, 0.025);
+
+  // Counter-rotating 5:7 polyrhythmic polygons
+  for (int layer = 0; layer < 4; layer++) {
+    float fl = float(layer);
+    float sides = mod(fl, 2.0) < 0.5 ? 5.0 : 7.0;
+    float spin = uTime * (mod(fl, 2.0) < 0.5 ? 0.5 : -0.7) * (1.0 + fl * 0.15);
+    float s = spec(0.08 + fl * 0.22);
+    float polyR = 0.22 + fl * 0.17 + s * 0.11;
+
+    float ang = mod(a + spin + TAU, TAU / sides) - (PI / sides);
+    float polyD = abs(cos(ang) * r - polyR * cos(PI / sides));
+    float line = 0.007 / (polyD + 0.004);
+    col += pal(fl * 0.25 + s * 0.3 + uTime * 0.05) * line * (0.45 + s * 0.9 + uBeat * 0.4);
+  }
+
+  // Projected rotating cube/tesseract diagonals
+  vec2 q = p * rot(uTime * 0.35);
+  float scale = 0.42 + uBass * 0.14;
+  float dBox = 1e5;
+  for (int i = 0; i < 4; i++) {
+    float ang0 = float(i) * TAU / 4.0 + uTime * 0.4;
+    float ang1 = ang0 + TAU / 4.0;
+    float ang2 = ang0 + 0.45 * sin(uTime * 0.6 + uMid);
+    vec2 v0 = vec2(cos(ang0), sin(ang0)) * scale;
+    vec2 v1 = vec2(cos(ang1), sin(ang1)) * scale;
+    vec2 v2 = vec2(cos(ang2), sin(ang2)) * (scale * 0.58);
+    dBox = min(dBox, segDist(q, v0, v1));
+    dBox = min(dBox, segDist(q, v0, v2));
+  }
+  col += pal(0.55 + uMid * 0.3) * (0.009 / (dBox + 0.005)) * (0.6 + uHigh * 0.8);
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'techno-warehouse',
+      name: 'Warehouse Laser Grid',
+      tags: ['Techno', 'Rave'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  float tilt = sin(uTime * 0.25) * 0.12;
+  p *= rot(tilt);
+  vec2 k = mix(p, kaleido(p, max(2.0, min(6.0, uSegments))), 0.35);
+
+  float horizonY = max(0.05, abs(k.y));
+  float depth = 1.0 / horizonY;
+  float worldX = k.x * depth;
+  float worldZ = depth + uTime * (3.2 + uBass * 2.5);
+
+  // Endless 3D cybernetic floor & ceiling grid
+  vec2 gridUv = fract(vec2(worldX * 0.65, worldZ * 0.65)) - 0.5;
+  float gridLine = min(abs(gridUv.x), abs(gridUv.y));
+  float gridGlow = smoothstep(0.08, 0.005, gridLine) * smoothstep(0.03, 0.35, horizonY);
+
+  float s = spec(clamp(fract(worldZ * 0.06), 0.02, 0.94));
+  vec3 col = pal(worldZ * 0.05 + s * 0.35) * gridGlow * (0.55 + s * 1.15);
+
+  // Sweeping club laser beams from vanishing point
+  float beamAng = atan(k.y, k.x);
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    float targetA = sin(uTime * (0.9 + fi * 0.22) + fi * 1.1) * 1.3;
+    float dA = abs(sin(beamAng - targetA));
+    float beam = (0.012 / (dA + 0.008)) * exp(-length(k) * 0.7);
+    col += pal(fi * 0.18 + uHigh * 0.3) * beam * (0.35 + uHigh * 0.9 + uBeat * 0.6);
+  }
+
+  // Horizon strobe band
+  float horizonStrobe = exp(-abs(k.y) * 26.0) * (0.4 + uBeat * 1.3);
+  col += pal(0.1) * horizonStrobe;
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'edm-supernova',
+      name: 'Festival Supernova',
+      tags: ['EDM', 'Big Room'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  p *= 1.0 - uBeat * 0.12;
+  p *= rot(uTime * 0.18);
+  vec2 k = kaleido(p, uSegments);
+  float r = length(k);
+  float a = atan(k.y, k.x);
+
+  // Euphoric radial laser fan
+  float rays = pow(abs(cos(a * 8.0 - uTime * 1.4)), 6.0);
+  float raySpec = spec(clamp(r * 0.5, 0.02, 0.92));
+  vec3 col = pal(r * 0.6 - uTime * 0.1 + raySpec * 0.3) * rays * exp(-r * 0.85) * (0.6 + raySpec * 1.4 + uMid);
+
+  // Drop shockwave rings
+  for (int i = 0; i < 5; i++) {
+    float fi = float(i);
+    float waveT = fract(uTime * 0.55 + fi * 0.2);
+    float ringD = abs(r - waveT * 1.5);
+    float ring = (0.014 / (ringD + 0.007)) * (1.0 - waveT);
+    col += pal(waveT + fi * 0.15) * ring * (0.4 + uBass * 0.9 + uBeat * 0.6);
+  }
+
+  // Warp-speed festival star streaks
+  vec2 streakUv = vec2(a * 6.0, r * 5.0 - uTime * (2.5 + uBass * 2.0));
+  vec2 cell = floor(streakUv);
+  vec2 gv = fract(streakUv) - 0.5;
+  float h = hash(cell);
+  if (h > 0.72) {
+    float d = length(vec2(gv.x * 2.5, gv.y * 0.45));
+    col += pal(h) * (0.025 / (d + 0.015)) * (0.4 + uHigh * 1.1);
+  }
+
+  // Supernova core flash
+  float core = exp(-r * (3.2 - uBass * 1.3)) * (0.85 + uBeat * 1.2);
+  col += pal(0.2 + uTime * 0.06) * core;
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
+    {
+      id: 'synthwave-outrun',
+      name: 'Outrun Cyber Sun',
+      tags: ['Synthwave', 'Electro'],
+      frag: `
+void main() {
+  vec2 p = normUv();
+  vec3 col = vec3(0.02, 0.008, 0.045);
+
+  // Segmented retro neon sun in upper half
+  vec2 sunPos = p - vec2(0.0, 0.18 + uBass * 0.04);
+  float sunD = length(sunPos);
+  float sunR = 0.44 + uBeat * 0.03;
+  if (sunD < sunR) {
+    float scan = sin(sunPos.y * 46.0 - uTime * 2.5);
+    float cut = sunPos.y < 0.04 ? smoothstep(-0.25, 0.25, scan + sunPos.y * 2.2) : 1.0;
+    float gradT = clamp((sunPos.y + sunR) / (2.0 * sunR), 0.0, 1.0);
+    col += pal(0.85 - gradT * 0.5) * cut * 1.35;
+  }
+  col += pal(0.75) * exp(-abs(sunD - sunR) * 16.0) * (0.45 + uBass * 0.8);
+
+  // Mirrored spectrum mountain skyline along horizon
+  float symX = abs(p.x);
+  float mountainH = spec(clamp(symX * 0.55 + 0.04, 0.02, 0.92)) * 0.36 * uIntensity;
+  float horizon = -0.06;
+  if (p.y > horizon && p.y < horizon + mountainH) {
+    col = mix(col * 0.25, pal(0.35 + (p.y - horizon) * 2.0) * 0.9, 0.85);
+  }
+  col += pal(0.3) * exp(-abs(p.y - (horizon + mountainH)) * 45.0) * 0.85;
+
+  // Perspective neon grid below horizon
+  if (p.y < horizon) {
+    float depth = 1.0 / max(0.02, horizon - p.y);
+    float gx = p.x * depth * 0.75;
+    float gz = depth * 0.65 + uTime * (2.2 + uBass * 1.8);
+    vec2 g = fract(vec2(gx, gz)) - 0.5;
+    float line = min(abs(g.x), abs(g.y));
+    float gridGlow = smoothstep(0.07, 0.005, line) * smoothstep(0.0, 0.25, horizon - p.y);
+    col += pal(0.15 + gz * 0.04) * gridGlow * (0.7 + uMid * 0.8 + uBeat * 0.4);
+  }
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
   ];
 
   const COMPOSITE_FRAG = `#version 300 es
@@ -435,13 +883,15 @@ uniform float uTrails;
 uniform float uBass;
 uniform float uSpeed;
 uniform float uTime;
+uniform float uBeatShake;
+uniform vec2 uMouse;
 
 void main() {
   vec3 scene = texture(uScene, vUv).rgb;
 
   vec2 centered = vUv - 0.5;
-  float zoom = 1.0 - 0.012 * uBass;
-  float a = 0.0025 * sin(uTime * 0.5) * uSpeed;
+  float zoom = 1.0 - (0.012 + 0.012 * uBeatShake) * uBass;
+  float a = 0.0028 * sin(uTime * 0.5) * uSpeed + uMouse.x * 0.002;
   float c = cos(a);
   float s = sin(a);
   vec2 histUv = mat2(c, -s, s, c) * (centered * zoom) + 0.5;
@@ -461,25 +911,56 @@ in vec2 vUv;
 out vec4 fragColor;
 
 uniform sampler2D uInput;
+uniform vec2 uRes;
 uniform float uBeat;
+uniform float uBass;
 uniform float uBeatFlash;
+uniform float uBeatShake;
+uniform float uBloom;
+uniform float uChromatic;
+
+vec3 sampleChroma(vec2 uv, vec2 dir, float ca) {
+  float r = texture(uInput, clamp(uv + dir * ca, 0.001, 0.999)).r;
+  float g = texture(uInput, clamp(uv, 0.001, 0.999)).g;
+  float b = texture(uInput, clamp(uv - dir * ca, 0.001, 0.999)).b;
+  return vec3(r, g, b);
+}
 
 void main() {
-  vec2 dir = vUv - 0.5;
+  vec2 centered = vUv - 0.5;
+  float punch = 1.0 - uBeatShake * (uBeat * 0.025 + uBass * 0.015);
+  vec2 uv = centered * punch + 0.5;
+  vec2 dir = uv - 0.5;
   float dist = length(dir);
-  float ca = uBeat * uBeatFlash * 0.0045;
 
-  float r = texture(uInput, vUv + dir * ca).r;
-  float g = texture(uInput, vUv).g;
-  float b = texture(uInput, vUv - dir * ca).b;
-  vec3 col = vec3(r, g, b);
+  float ca = uChromatic * (0.0018 + uBeat * 0.006);
+  vec3 col = sampleChroma(uv, dir, ca);
 
-  // Subtle beat flash + soft vignette + tone map + gamma
-  col *= 1.0 + uBeat * uBeatFlash * 0.18;
-  float vig = smoothstep(1.05, 0.25, dist);
-  col *= mix(0.68, 1.0, vig);
+  // 9-tap tent/box wide bloom on bright areas
+  if (uBloom > 0.01) {
+    vec2 px = (1.0 / max(uRes, vec2(1.0))) * 3.5;
+    vec3 glow = vec3(0.0);
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        vec2 off = vec2(float(x), float(y)) * px;
+        vec3 s = texture(uInput, clamp(uv + off, 0.001, 0.999)).rgb;
+        float lum = dot(s, vec3(0.299, 0.587, 0.114));
+        glow += s * smoothstep(0.28, 1.0, lum);
+      }
+    }
+    glow /= 9.0;
+    col += glow * uBloom * (0.7 + 0.55 * uBeat);
+  }
 
-  col = col / (1.0 + col * 0.35);
+  // Beat flash + soft vignette
+  col *= 1.0 + uBeat * uBeatFlash * 0.2;
+  float vig = smoothstep(1.05, 0.24, dist);
+  col *= mix(0.66, 1.0, vig);
+
+  // ACES-like vibrant filmic tone mapping + gamma
+  vec3 a = col * (col + 0.0245786) - 0.000090537;
+  vec3 b = col * (0.983729 * col + 0.4329510) + 0.238081;
+  col = clamp(a / b, 0.0, 1.0);
   col = pow(max(col, 0.0), vec3(1.0 / 2.2));
   fragColor = vec4(col, 1.0);
 }
