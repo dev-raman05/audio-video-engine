@@ -17,8 +17,9 @@ permissions:
 jobs:
   build:
     name: Build (${{ matrix.platform }})
-    fail-fast: false
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -30,7 +31,6 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             cmd: npm run dist:linux -- --publish never
-    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
