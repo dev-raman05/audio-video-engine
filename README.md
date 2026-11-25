@@ -2,18 +2,19 @@
 
 Cross-platform (**Windows, macOS, Linux**) audio-reactive WebGL2 kaleidoscope visualizer that listens passively to your music from any source—Spotify, YouTube, Apple Music, browser tabs, VLC, or games—only while the app window is open.
 
-## Download & Install (Windows, macOS, Linux)
+## One-Click Download (No Zip Extraction Required)
 
-Download the pre-built app for your operating system from the **[Latest GitHub Release](https://github.com/dev-raman05/audio-video-engine/releases/latest)**:
+> **Just want to run the app?** **Do NOT click GitHub's green `Code → Download ZIP` button** (that only downloads raw developer source code). Click your OS installer below to download and run immediately:
 
-- **Windows (`x64`):** Run `KaleidoSync-Setup-x.y.z-x64.exe` (installer with Desktop & Start Menu shortcuts) or extract `KaleidoSync-x.y.z-win-x64.zip` and run `KaleidoSync.exe`.
-- **macOS (Apple Silicon `arm64` & Intel `x64`):** Open the matching `.dmg` (or `.zip`) and drag **KaleidoSync.app** to **Applications**.
-  - *First-launch note:* Because the app is not Apple-notarized, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`). When prompted, grant **Screen & System Audio Recording** permission for system loopback audio (or choose Microphone / virtual audio).
-- **Linux (`x64`):**
-  - **AppImage:** `chmod +x KaleidoSync-*.AppImage && ./KaleidoSync-*.AppImage`
-  - **Debian / Ubuntu:** `sudo apt install ./KaleidoSync-*.deb`
-  - **Tarball:** Extract `KaleidoSync-*.tar.gz` and run `./kaleidosync`
-  - *Audio note:* On PulseAudio/PipeWire, if System Audio loopback is unavailable on your desktop environment, pick your `Monitor of ...` device under **Microphone / Line-In**.
+| Platform | Direct Installer Download | How to Run |
+| --- | --- | --- |
+| **Windows (64-bit)** | **[KaleidoSync-Windows-Setup.exe](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Windows-Setup.exe)** | Double-click to install & launch (creates Desktop & Start Menu shortcuts). If SmartScreen warns about an unsigned app, click **More info → Run anyway**. |
+| **macOS (Apple Silicon M1–M4)** | **[KaleidoSync-macOS-arm64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-arm64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording**. |
+| **macOS (Intel)** | **[KaleidoSync-macOS-x64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-x64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording**. |
+| **Linux (Any Distro, x64)** | **[KaleidoSync-Linux-x64.AppImage](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Linux-x64.AppImage)** | `chmod +x KaleidoSync-Linux-x64.AppImage && ./KaleidoSync-Linux-x64.AppImage`. On PulseAudio/PipeWire, pick `Monitor of ...` under **Microphone / Line-In** if loopback isn't listed. |
+| **Linux (Ubuntu / Debian, x64)** | **[KaleidoSync-Linux-x64.deb](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Linux-x64.deb)** | `sudo apt install ./KaleidoSync-Linux-x64.deb` then launch **KaleidoSync** from your app menu. |
+
+You can also browse **[All Releases](https://github.com/dev-raman05/audio-video-engine/releases)**.
 
 ---
 
@@ -35,7 +36,7 @@ Download the pre-built app for your operating system from the **[Latest GitHub R
 
 All audio analysis runs locally in memory in real time (`AnalyserNode`) and is never recorded, saved to disk, or transmitted over the network.
 
-## One-Click Scripts (Windows)
+## One-Click Scripts (Windows Developers)
 
 - `launch-kaleidosync.bat` — Launches the local standalone `dist\win-unpacked\KaleidoSync.exe` (or falls back to `npm.cmd start`).
 - `deploy-to-github.bat` — Stages all changes, commits (with custom or timestamp message), syncs, and pushes directly to `https://github.com/dev-raman05/audio-video-engine.git`.
@@ -55,9 +56,9 @@ npm.cmd run smoke
 npm.cmd run dist:local
 
 # Build installers for your current OS
-npm.cmd run dist:win     # Windows NSIS installer + zip
-npm.cmd run dist:mac     # macOS arm64 + x64 dmg & zip
-npm.cmd run dist:linux   # Linux AppImage + deb + tar.gz
+npm.cmd run dist:win     # Windows NSIS setup exe
+npm.cmd run dist:mac     # macOS arm64 + x64 dmg
+npm.cmd run dist:linux   # Linux AppImage + deb
 ```
 
 ## Keyboard Shortcuts (Window-Only)

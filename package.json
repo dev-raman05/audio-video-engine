@@ -9,9 +9,9 @@
     "smoke": "electron . --smoke-test",
     "dist": "electron-builder",
     "dist:local": "electron-builder --win dir -c.electronDist=node_modules/electron/dist",
-    "dist:win": "electron-builder --win nsis zip --x64",
-    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64",
-    "dist:linux": "electron-builder --linux AppImage deb tar.gz --x64"
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:mac": "electron-builder --mac dmg --arm64 --x64",
+    "dist:linux": "electron-builder --linux AppImage deb --x64"
   },
   "author": "Raman Mishra <yoraman31@gmail.com>",
   "license": "MIT",
@@ -22,7 +22,6 @@
   "build": {
     "appId": "com.raman.kaleidosync",
     "productName": "KaleidoSync",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "main.js",
       "preload.js",
@@ -41,12 +40,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
         }
       ]
     },
@@ -55,7 +48,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+      "artifactName": "KaleidoSync-Windows-Setup.exe"
     },
     "mac": {
       "icon": "build/icon.png",
@@ -63,6 +56,7 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "identity": null,
+      "artifactName": "KaleidoSync-macOS-${arch}.${ext}",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "KaleidoSync analyzes audio input locally when Microphone or Line-In source is selected.",
         "NSScreenCaptureUsageDescription": "KaleidoSync uses macOS system audio capture to react to music playing on your Mac. No screen video is recorded or sent anywhere."
@@ -70,13 +64,6 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "arm64",
             "x64"
@@ -89,6 +76,7 @@
       "category": "AudioVideo;Music;",
       "maintainer": "Raman Mishra <yoraman31@gmail.com>",
       "synopsis": "Audio-reactive WebGL2 kaleidoscope visualizer",
+      "artifactName": "KaleidoSync-Linux-x64.${ext}",
       "target": [
         {
           "target": "AppImage",
@@ -98,12 +86,6 @@
         },
         {
           "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "tar.gz",
           "arch": [
             "x64"
           ]

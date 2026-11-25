@@ -67,10 +67,8 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
-            dist/*.zip
             dist/*.AppImage
             dist/*.deb
-            dist/*.tar.gz
           if-no-files-found: error
 
   release:
@@ -120,17 +118,17 @@ jobs:
           cat <<EOF > /tmp/release-notes.md
           ## KaleidoSync ${TAG} — Cross-Platform Audio-Reactive Visual Engine
 
-          Download the installer or archive for your operating system below:
+          Click the direct installer for your OS below (no zip extraction required):
 
-          - **Windows (\`x64\`):** Run \`KaleidoSync-Setup-*-x64.exe\` (installer) or extract \`KaleidoSync-*-win-x64.zip\` and run \`KaleidoSync.exe\`.
-          - **macOS (\`arm64\` Apple Silicon & \`x64\` Intel):** Open the matching \`.dmg\` (or \`.zip\`) and drag **KaleidoSync** to Applications. Because the app is unsigned, on first launch **right-click → Open** (or run \`xattr -cr /Applications/KaleidoSync.app\`) and allow **Screen & System Audio Recording** when prompted for system audio loopback.
-          - **Linux (\`x64\`):** Run the \`.AppImage\` (\`chmod +x KaleidoSync-*.AppImage && ./KaleidoSync-*.AppImage\`), install the \`.deb\` (\`sudo apt install ./KaleidoSync-*.deb\`), or extract \`.tar.gz\`. On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your \`Monitor of ...\` device under **Microphone / Line-In**.
+          - **Windows (`x64`):** `KaleidoSync-Windows-Setup.exe` — double-click to install and run (creates Desktop & Start Menu shortcuts; if Windows SmartScreen warns about an unsigned app, click **More info → Run anyway**).
+          - **macOS (`arm64` Apple Silicon & `x64` Intel):** `KaleidoSync-macOS-arm64.dmg` or `KaleidoSync-macOS-x64.dmg` — open the `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording** when prompted.
+          - **Linux (`x64`):** `KaleidoSync-Linux-x64.AppImage` (`chmod +x KaleidoSync-Linux-x64.AppImage && ./KaleidoSync-Linux-x64.AppImage`) or `KaleidoSync-Linux-x64.deb` (`sudo apt install ./KaleidoSync-Linux-x64.deb`). On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your `Monitor of ...` device under **Microphone / Line-In**.
           EOF
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-          else
-            gh release create "$TAG" "${ASSETS[@]}" \
-              --title "KaleidoSync $TAG" \
-              --notes-file /tmp/release-notes.md
-          fi
+          # Remove any stale or stuck draft release for this tag before publishing cleanly
+          gh release delete "$TAG" --yes 2>/dev/null || true
+
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --title "KaleidoSync $TAG" \
+            --notes-file /tmp/release-notes.md \
+            --latest
