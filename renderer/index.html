@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KaleidoSync — Audio Visualizer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="gl-canvas"></canvas>
+
+  <div id="fps-badge" class="hud-pill hidden">60 FPS</div>
+  <div id="silence-hint" class="hud-pill hidden">Waiting for audio… play something</div>
+  <div id="toast-badge" class="hud-pill hidden"></div>
+
+  <aside id="control-panel">
+    <div class="panel-header">
+      <div>
+        <div class="brand-title">KaleidoSync</div>
+        <div class="brand-sub">Audio-Reactive Visual Engine</div>
+      </div>
+      <button id="btn-help" class="btn" type="button" title="Shortcuts (?)">?</button>
+    </div>
+
+    <div class="panel-scroll">
+      <section class="section">
+        <div class="section-title">Audio Source</div>
+        <div class="row">
+          <select id="source-select">
+            <option value="system">System Audio (All Apps)</option>
+            <option value="mic">Microphone / Line-In</option>
+            <option value="demo">Demo Beat (Silent)</option>
+          </select>
+          <button id="connect-btn" class="btn" type="button">Reconnect</button>
+        </div>
+        <div id="mic-row" class="row" style="display:none;">
+          <select id="mic-select"></select>
+        </div>
+        <div class="status-row">
+          <span id="audio-dot" class="status-dot" data-state="idle"></span>
+          <span id="audio-status-text">Initializing…</span>
+        </div>
+        <div class="level-meter">
+          <div id="level-meter-fill"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Genre Presets (1–9)</div>
+        <div id="preset-grid" class="chip-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Visual Mode</div>
+        <div id="mode-grid" class="mode-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Color Palette (P)</div>
+        <div id="palette-grid" class="palette-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Tuning</div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Symmetry</span><span id="slider-segments-val">8x</span></div>
+          <input id="slider-segments" type="range" min="2" max="24" step="1" value="8">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Speed</span><span id="slider-speed-val">1.00x</span></div>
+          <input id="slider-speed" type="range" min="0.2" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Intensity</span><span id="slider-intensity-val">100%</span></div>
+          <input id="slider-intensity" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Trails</span><span id="slider-trails-val">78%</span></div>
+          <input id="slider-trails" type="range" min="0.0" max="0.96" step="0.02" value="0.78">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Sensitivity</span><span id="slider-sensitivity-val">1.20x</span></div>
+          <input id="slider-sensitivity" type="range" min="0.4" max="2.5" step="0.05" value="1.2">
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Performance</div>
+        <div class="row">
+          <select id="render-scale-select">
+            <option value="1">Render Scale: 100%</option>
+            <option value="0.75">Render Scale: 75%</option>
+            <option value="0.5">Render Scale: 50%</option>
+          </select>
+          <select id="fps-cap-select">
+            <option value="0">FPS: VSync</option>
+            <option value="60">FPS: 60</option>
+            <option value="30">FPS: 30</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Behavior & Display</div>
+        <div class="toggle-row">
+          <label for="toggle-auto-cycle">Auto-Cycle Modes (A)</label>
+          <div class="row">
+            <select id="cycle-interval-select" style="flex:0 0 auto; padding:2px 6px;">
+              <option value="15">15s</option>
+              <option value="30" selected>30s</option>
+              <option value="60">60s</option>
+            </select>
+            <input id="toggle-auto-cycle" type="checkbox">
+          </div>
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-beat-flash">Beat Flash</label>
+          <input id="toggle-beat-flash" type="checkbox" checked>
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-always-top">Always on Top</label>
+          <input id="toggle-always-top" type="checkbox">
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-keep-awake">Keep Screen Awake</label>
+          <input id="toggle-keep-awake" type="checkbox" checked>
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-show-fps">Show FPS</label>
+          <input id="toggle-show-fps" type="checkbox">
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="btn-grid">
+          <button id="btn-fullscreen" class="btn" type="button">Fullscreen (F)</button>
+          <button id="btn-next-display" class="btn" type="button">Next Display</button>
+          <button id="btn-hide-ui" class="btn" type="button" style="grid-column: span 2;">Hide Panel (H)</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <div id="start-overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h2>Start Audio Visualization</h2>
+      <p>Click below to connect KaleidoSync to your system audio output (Spotify, browser, YouTube, media players, or any app).</p>
+      <button id="start-overlay-btn" class="btn btn-primary" type="button">Click to Start System Audio</button>
+    </div>
+  </div>
+
+  <div id="help-overlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h2>Keyboard Shortcuts</h2>
+      <div class="shortcut-table">
+        <span class="kbd">F / F11</span><span>Toggle fullscreen</span>
+        <span class="kbd">Esc</span><span>Exit fullscreen / close help</span>
+        <span class="kbd">H</span><span>Hide / show control panel</span>
+        <span class="kbd">Space / →</span><span>Next visual mode</span>
+        <span class="kbd">←</span><span>Previous visual mode</span>
+        <span class="kbd">↑ / ↓</span><span>Adjust intensity</span>
+        <span class="kbd">1 – 9</span><span>Apply genre preset</span>
+        <span class="kbd">P</span><span>Next color palette</span>
+        <span class="kbd">A</span><span>Toggle auto-cycle on beat</span>
+        <span class="kbd">?</span><span>Show / hide this help</span>
+      </div>
+      <button id="help-close-btn" class="btn btn-primary" type="button">Close</button>
+    </div>
+  </div>
+
+  <script src="js/settings.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/shaders.js"></script>
+  <script src="js/gl.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
