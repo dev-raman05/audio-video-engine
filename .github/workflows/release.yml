@@ -77,6 +77,8 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -103,19 +105,32 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: KaleidoSync ${{ steps.tag.outputs.tag }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: release-assets/*
-          body: |
-            ## KaleidoSync ${{ steps.tag.outputs.tag }} — Cross-Platform Audio-Reactive Visual Engine
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mapfile -t ASSETS < <(find release-assets -type f | sort)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "No release assets found!"
+            exit 1
+          fi
+          ls -lh "${ASSETS[@]}"
 
-            Download the installer or archive for your operating system below:
+          cat <<EOF > /tmp/release-notes.md
+          ## KaleidoSync ${TAG} — Cross-Platform Audio-Reactive Visual Engine
 
-            - **Windows (`x64`):** Run `KaleidoSync-Setup-*-x64.exe` (installer) or extract `KaleidoSync-*-win-x64.zip` and run `KaleidoSync.exe`.
-            - **macOS (`arm64` Apple Silicon & `x64` Intel):** Open the matching `.dmg` (or `.zip`) and drag **KaleidoSync** to Applications. Because the app is unsigned, on first launch **right-click → Open** (or run `xattr -cr /Applications/KaleidoSync.app`) and allow **Screen & System Audio Recording** when prompted for system audio loopback.
-            - **Linux (`x64`):** Run the `.AppImage` (`chmod +x KaleidoSync-*.AppImage && ./KaleidoSync-*.AppImage`), install the `.deb` (`sudo apt install ./KaleidoSync-*.deb`), or extract `.tar.gz`. On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your `Monitor of ...` device under **Microphone / Line-In**.
+          Download the installer or archive for your operating system below:
+
+          - **Windows (\`x64\`):** Run \`KaleidoSync-Setup-*-x64.exe\` (installer) or extract \`KaleidoSync-*-win-x64.zip\` and run \`KaleidoSync.exe\`.
+          - **macOS (\`arm64\` Apple Silicon & \`x64\` Intel):** Open the matching \`.dmg\` (or \`.zip\`) and drag **KaleidoSync** to Applications. Because the app is unsigned, on first launch **right-click → Open** (or run \`xattr -cr /Applications/KaleidoSync.app\`) and allow **Screen & System Audio Recording** when prompted for system audio loopback.
+          - **Linux (\`x64\`):** Run the \`.AppImage\` (\`chmod +x KaleidoSync-*.AppImage && ./KaleidoSync-*.AppImage\`), install the \`.deb\` (\`sudo apt install ./KaleidoSync-*.deb\`), or extract \`.tar.gz\`. On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your \`Monitor of ...\` device under **Microphone / Line-In**.
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --title "KaleidoSync $TAG" \
+              --notes-file /tmp/release-notes.md
+          fi
