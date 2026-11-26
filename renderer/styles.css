@@ -5,8 +5,8 @@
 }
 
 :root {
-  --panel-bg: rgba(12, 14, 22, 0.72);
-  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-bg: rgba(11, 13, 21, 0.88);
+  --panel-border: rgba(255, 255, 255, 0.14);
   --text-main: #f3f5fa;
   --text-muted: #9aa4b8;
   --accent-1: #7c5cff;
@@ -47,16 +47,16 @@ body.idle-hidden {
   right: 16px;
   bottom: 16px;
   width: 320px;
-  background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  background: linear-gradient(180deg, rgba(16, 20, 32, 0.92), var(--panel-bg));
   border: 1px solid var(--panel-border);
   border-radius: 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   z-index: 20;
-  transition: opacity 0.28s ease, transform 0.28s ease;
+  contain: layout style paint;
+  will-change: opacity, transform;
+  transition: opacity 0.24s ease, transform 0.24s ease;
 }
 
 body.idle-hidden #control-panel,
@@ -205,9 +205,11 @@ select:hover {
 
 #level-meter-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
   background: linear-gradient(90deg, #22c55e, #00d4ff, #a855f7);
-  transition: width 0.05s linear;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
 }
 
 /* Genre Presets */
@@ -372,14 +374,38 @@ input[type="range"] {
   position: fixed;
   padding: 7px 12px;
   border-radius: 999px;
-  background: rgba(12, 14, 22, 0.72);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(11, 13, 21, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   font-size: 12px;
   color: var(--text-main);
   z-index: 15;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.hud-btn {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.hud-btn:hover {
+  background: rgba(24, 28, 44, 0.96);
+  border-color: rgba(0, 212, 255, 0.65);
+}
+
+#btn-show-ui {
+  top: 16px;
+  right: 16px;
+  z-index: 25;
+}
+
+body.ui-manually-hidden.idle-hidden #btn-show-ui {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
 }
 
 #silence-hint {

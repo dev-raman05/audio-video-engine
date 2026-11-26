@@ -109,6 +109,13 @@
     },
   ];
 
+  for (const p of PALETTES) {
+    p.a = new Float32Array(p.a);
+    p.b = new Float32Array(p.b);
+    p.c = new Float32Array(p.c);
+    p.d = new Float32Array(p.d);
+  }
+
   const GENRE_PRESETS = [
     {
       id: 'edm',

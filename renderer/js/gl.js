@@ -10,6 +10,7 @@
         antialias: false,
         depth: false,
         stencil: false,
+        desynchronized: true,
         powerPreference: 'high-performance',
       });
 
@@ -20,6 +21,10 @@
 
       this.width = 0;
       this.height = 0;
+      this.bloomW = 0;
+      this.bloomH = 0;
+      this.dynamicScale = 1.0;
+      this.lastResizeMs = 0;
       this.time = 0;
       this.morphRemaining = 0;
       this.histIdx = 0;
@@ -30,8 +35,10 @@
 
       const gl = this.gl;
       this.floatExt = gl.getExtension('EXT_color_buffer_float');
-      this.texInternalFormat = this.floatExt ? gl.RGBA16F : gl.RGBA8;
-      this.texType = this.floatExt ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+      const fmt = this._pickColorFormat();
+      this.texInternalFormat = fmt.internalFormat;
+      this.texFormat = fmt.format;
+      this.texType = fmt.type;
 
       // Empty VAO for gl_VertexID fullscreen triangle
       this.vao = gl.createVertexArray();
@@ -42,6 +49,41 @@
       this._initAudioTexture();
       this.sceneFbo = null;
       this.historyFbos = [null, null];
+      this.bloomFbo = null;
+    }
+
+    _pickColorFormat() {
+      const gl = this.gl;
+      const candidates = this.floatExt
+        ? [
+            { internalFormat: gl.R11F_G11F_B10F, format: gl.RGB, type: gl.HALF_FLOAT },
+            { internalFormat: gl.RGBA16F, format: gl.RGBA, type: gl.HALF_FLOAT },
+            { internalFormat: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE },
+          ]
+        : [{ internalFormat: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE }];
+
+      for (const c of candidates) {
+        const tex = gl.createTexture();
+        const fbo = gl.createFramebuffer();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, c.internalFormat, 16, 16, 0, c.format, c.type, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fbo);
+        gl.deleteTexture(tex);
+        if (status === gl.FRAMEBUFFER_COMPLETE) {
+          return c;
+        }
+      }
+      return { internalFormat: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE };
+    }
+
+    setDynamicScale(scale) {
+      this.dynamicScale = Math.max(0.6, Math.min(1.0, scale || 1.0));
     }
 
     setMouse(nx, ny) {
@@ -154,6 +196,15 @@
         ]);
       }
 
+      const bloomRes = this._linkProgram(window.KS.BLOOM_FRAG, 'bloom');
+      if (bloomRes.error) {
+        this.ok = false;
+        this.failedModes.push({ id: 'bloom', name: 'Bloom', error: bloomRes.error });
+      } else {
+        this.bloomProg = bloomRes.program;
+        this.bloomU = this._getUniforms(this.bloomProg, ['uInput', 'uTexel']);
+      }
+
       const presRes = this._linkProgram(window.KS.PRESENT_FRAG, 'present');
       if (presRes.error) {
         this.ok = false;
@@ -162,7 +213,7 @@
         this.presProg = presRes.program;
         this.presU = this._getUniforms(this.presProg, [
           'uInput',
-          'uRes',
+          'uBloomTex',
           'uBeat',
           'uBass',
           'uBeatFlash',
@@ -201,7 +252,7 @@
         w,
         h,
         0,
-        gl.RGBA,
+        this.texFormat,
         this.texType,
         null
       );
@@ -226,8 +277,8 @@
 
     ensureSize(renderScale) {
       if (!this.ok) return;
-      const scale = Math.max(0.25, Math.min(1.0, renderScale || 1.0));
-      const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+      const scale = Math.max(0.25, Math.min(1.0, renderScale || 1.0)) * this.dynamicScale;
+      const dpr = Math.min(1.25, window.devicePixelRatio || 1);
       const cw = this.canvas.clientWidth || window.innerWidth;
       const ch = this.canvas.clientHeight || window.innerHeight;
       const targetW = Math.max(64, Math.floor(cw * dpr * scale));
@@ -237,18 +288,28 @@
         return;
       }
 
+      const nowMs = performance.now();
+      if (this.sceneFbo && nowMs - this.lastResizeMs < 250) {
+        return;
+      }
+      this.lastResizeMs = nowMs;
+
       this.width = targetW;
       this.height = targetH;
+      this.bloomW = Math.max(32, targetW >> 2);
+      this.bloomH = Math.max(32, targetH >> 2);
       this.canvas.width = targetW;
       this.canvas.height = targetH;
 
       this._destroyFbo(this.sceneFbo);
       this._destroyFbo(this.historyFbos[0]);
       this._destroyFbo(this.historyFbos[1]);
+      this._destroyFbo(this.bloomFbo);
 
       this.sceneFbo = this._createFbo(targetW, targetH);
       this.historyFbos[0] = this._createFbo(targetW, targetH);
       this.historyFbos[1] = this._createFbo(targetW, targetH);
+      this.bloomFbo = this._createFbo(this.bloomW, this.bloomH);
       this.histIdx = 0;
     }
 
@@ -274,7 +335,7 @@
       const modeEntry = this.modeMap.get(settings.mode) || this.compiledModes[0];
       const pal = window.KS.getPalette(settings.palette);
 
-      const clampedDt = Math.min(0.1, Math.max(0.001, dt || 0.016));
+      const clampedDt = Math.min(0.05, Math.max(0.001, dt || 0.016));
       this.time += clampedDt * settings.speed * (0.6 + audio.bands.bass);
 
       this.mouse[0] += (this.targetMouse[0] - this.mouse[0]) * Math.min(1, clampedDt * 5.0);
@@ -343,7 +404,21 @@
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-      // Pass 3: Present -> screen
+      // Pass 3: Quarter-res bloom -> bloomFbo
+      const bloomVal = settings.bloom != null ? settings.bloom : 0.7;
+      if (bloomVal > 0.01 && this.bloomFbo) {
+        gl.viewport(0, 0, this.bloomW, this.bloomH);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomFbo.fbo);
+        gl.useProgram(this.bloomProg);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.historyFbos[nextIdx].tex);
+        gl.uniform1i(this.bloomU.uInput, 0);
+        gl.uniform2f(this.bloomU.uTexel, 1 / this.width, 1 / this.height);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.viewport(0, 0, this.width, this.height);
+      }
+
+      // Pass 4: Present -> screen
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.useProgram(this.presProg);
 
@@ -351,17 +426,39 @@
       gl.bindTexture(gl.TEXTURE_2D, this.historyFbos[nextIdx].tex);
       gl.uniform1i(this.presU.uInput, 0);
 
-      gl.uniform2f(this.presU.uRes, this.width, this.height);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.bloomFbo ? this.bloomFbo.tex : this.historyFbos[nextIdx].tex);
+      gl.uniform1i(this.presU.uBloomTex, 1);
+
       gl.uniform1f(this.presU.uBeat, audio.beatPulse);
       gl.uniform1f(this.presU.uBass, audio.bands.bass);
       gl.uniform1f(this.presU.uBeatFlash, settings.beatFlash ? 1.0 : 0.0);
       gl.uniform1f(this.presU.uBeatShake, beatShakeFlag);
-      gl.uniform1f(this.presU.uBloom, settings.bloom != null ? settings.bloom : 0.7);
+      gl.uniform1f(this.presU.uBloom, bloomVal);
       gl.uniform1f(this.presU.uChromatic, settings.chromatic != null ? settings.chromatic : 0.65);
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       this.histIdx = nextIdx;
+    }
+
+    dispose() {
+      if (!this.gl) return;
+      const gl = this.gl;
+      this._destroyFbo(this.sceneFbo);
+      this._destroyFbo(this.historyFbos[0]);
+      this._destroyFbo(this.historyFbos[1]);
+      this._destroyFbo(this.bloomFbo);
+      if (this.audioTex) gl.deleteTexture(this.audioTex);
+      if (this.vao) gl.deleteVertexArray(this.vao);
+      for (const m of this.compiledModes) {
+        if (m.program) gl.deleteProgram(m.program);
+      }
+      if (this.compProg) gl.deleteProgram(this.compProg);
+      if (this.bloomProg) gl.deleteProgram(this.bloomProg);
+      if (this.presProg) gl.deleteProgram(this.presProg);
+      if (this.vertShader && this.vertShader.shader) gl.deleteShader(this.vertShader.shader);
+      this.ok = false;
     }
   }
 

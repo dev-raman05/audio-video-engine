@@ -9,10 +9,15 @@ Cross-platform (**Windows, macOS, Linux**) audio-reactive WebGL2 kaleidoscope vi
 | Platform | Direct Installer Download | How to Run |
 | --- | --- | --- |
 | **Windows (64-bit)** | **[KaleidoSync-Windows-Setup.exe](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Windows-Setup.exe)** | Double-click to install & launch (creates Desktop & Start Menu shortcuts). If SmartScreen warns about an unsigned app, click **More info → Run anyway**. |
-| **macOS (Apple Silicon M1–M4)** | **[KaleidoSync-macOS-arm64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-arm64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording**. |
-| **macOS (Intel)** | **[KaleidoSync-macOS-x64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-x64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording**. |
+| **macOS (Apple Silicon M1–M5)** | **[KaleidoSync-macOS-arm64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-arm64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, then open via **System Settings → Privacy & Security → Open Anyway** (or run `xattr -cr /Applications/KaleidoSync.app`). Allow **Screen & System Audio Recording** when prompted. |
+| **macOS (Intel)** | **[KaleidoSync-macOS-x64.dmg](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-x64.dmg)** | Open `.dmg`, drag **KaleidoSync** to **Applications**, then open via **System Settings → Privacy & Security → Open Anyway** (or run `xattr -cr /Applications/KaleidoSync.app`). Allow **Screen & System Audio Recording** when prompted. |
 | **Linux (Any Distro, x64)** | **[KaleidoSync-Linux-x64.AppImage](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Linux-x64.AppImage)** | `chmod +x KaleidoSync-Linux-x64.AppImage && ./KaleidoSync-Linux-x64.AppImage`. On PulseAudio/PipeWire, pick `Monitor of ...` under **Microphone / Line-In** if loopback isn't listed. |
 | **Linux (Ubuntu / Debian, x64)** | **[KaleidoSync-Linux-x64.deb](https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-Linux-x64.deb)** | `sudo apt install ./KaleidoSync-Linux-x64.deb` then launch **KaleidoSync** from your app menu. |
+
+**macOS Apple Silicon (M1–M5) 1-Line Terminal Install (Zero Gatekeeper Warnings):**
+```bash
+curl -L -o /tmp/KaleidoSync.dmg https://github.com/dev-raman05/audio-video-engine/releases/latest/download/KaleidoSync-macOS-arm64.dmg && hdiutil attach /tmp/KaleidoSync.dmg -nobrowse -quiet && rm -rf /Applications/KaleidoSync.app && cp -R /Volumes/KaleidoSync*/KaleidoSync.app /Applications/ && hdiutil detach /Volumes/KaleidoSync* -quiet && xattr -cr /Applications/KaleidoSync.app && open /Applications/KaleidoSync.app
+```
 
 You can also browse **[All Releases](https://github.com/dev-raman05/audio-video-engine/releases)**.
 

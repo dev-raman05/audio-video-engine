@@ -13,6 +13,7 @@
   <div id="fps-badge" class="hud-pill hidden">60 FPS</div>
   <div id="silence-hint" class="hud-pill hidden">Waiting for audio… play something</div>
   <div id="toast-badge" class="hud-pill hidden"></div>
+  <button id="btn-show-ui" class="hud-pill hud-btn hidden" type="button" title="Show Controls (H)">☰ Controls (H)</button>
 
   <aside id="control-panel">
     <div class="panel-header">
@@ -109,6 +110,10 @@
             <option value="60">FPS: 60</option>
             <option value="30">FPS: 30</option>
           </select>
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-auto-quality">Auto Quality (Smooth FPS)</label>
+          <input id="toggle-auto-quality" type="checkbox" checked>
         </div>
       </section>
 

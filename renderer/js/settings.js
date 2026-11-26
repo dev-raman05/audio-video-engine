@@ -18,6 +18,7 @@
     bloom: 0.7,
     chromatic: 0.65,
     renderScale: 1.0,
+    autoQuality: true,
     fpsCap: 0,
     autoCycle: false,
     cycleInterval: 30,

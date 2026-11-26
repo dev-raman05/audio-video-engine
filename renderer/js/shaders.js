@@ -905,13 +905,38 @@ void main() {
 }
 `;
 
+  const BLOOM_FRAG = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uInput;
+uniform vec2 uTexel;
+
+vec3 brightSample(vec2 uv) {
+  vec3 c = texture(uInput, clamp(uv, 0.001, 0.999)).rgb;
+  float lum = dot(c, vec3(0.299, 0.587, 0.114));
+  return c * smoothstep(0.26, 1.0, lum);
+}
+
+void main() {
+  vec2 d = uTexel * 2.2;
+  vec3 acc = brightSample(vUv) * 0.28;
+  acc += brightSample(vUv + vec2(d.x, d.y)) * 0.18;
+  acc += brightSample(vUv + vec2(-d.x, d.y)) * 0.18;
+  acc += brightSample(vUv + vec2(d.x, -d.y)) * 0.18;
+  acc += brightSample(vUv + vec2(-d.x, -d.y)) * 0.18;
+  fragColor = vec4(acc, 1.0);
+}
+`;
+
   const PRESENT_FRAG = `#version 300 es
 precision highp float;
 in vec2 vUv;
 out vec4 fragColor;
 
 uniform sampler2D uInput;
-uniform vec2 uRes;
+uniform sampler2D uBloomTex;
 uniform float uBeat;
 uniform float uBass;
 uniform float uBeatFlash;
@@ -928,28 +953,23 @@ vec3 sampleChroma(vec2 uv, vec2 dir, float ca) {
 
 void main() {
   vec2 centered = vUv - 0.5;
-  float punch = 1.0 - uBeatShake * (uBeat * 0.025 + uBass * 0.015);
+  float punch = 1.0 - uBeatShake * (uBeat * 0.022 + uBass * 0.012);
   vec2 uv = centered * punch + 0.5;
   vec2 dir = uv - 0.5;
   float dist = length(dir);
 
-  float ca = uChromatic * (0.0018 + uBeat * 0.006);
-  vec3 col = sampleChroma(uv, dir, ca);
+  vec3 col;
+  if (uChromatic > 0.01) {
+    float ca = uChromatic * (0.0018 + uBeat * 0.0055);
+    col = sampleChroma(uv, dir, ca);
+  } else {
+    col = texture(uInput, clamp(uv, 0.001, 0.999)).rgb;
+  }
 
-  // 9-tap tent/box wide bloom on bright areas
+  // Quarter-res hardware-filtered bloom
   if (uBloom > 0.01) {
-    vec2 px = (1.0 / max(uRes, vec2(1.0))) * 3.5;
-    vec3 glow = vec3(0.0);
-    for (int x = -1; x <= 1; x++) {
-      for (int y = -1; y <= 1; y++) {
-        vec2 off = vec2(float(x), float(y)) * px;
-        vec3 s = texture(uInput, clamp(uv + off, 0.001, 0.999)).rgb;
-        float lum = dot(s, vec3(0.299, 0.587, 0.114));
-        glow += s * smoothstep(0.28, 1.0, lum);
-      }
-    }
-    glow /= 9.0;
-    col += glow * uBloom * (0.7 + 0.55 * uBeat);
+    vec3 glow = texture(uBloomTex, clamp(uv, 0.002, 0.998)).rgb;
+    col += glow * uBloom * (0.75 + 0.55 * uBeat);
   }
 
   // Beat flash + soft vignette
@@ -970,5 +990,6 @@ void main() {
   window.KS.COMMON_HEADER = COMMON_HEADER;
   window.KS.MODES = MODES;
   window.KS.COMPOSITE_FRAG = COMPOSITE_FRAG;
+  window.KS.BLOOM_FRAG = BLOOM_FRAG;
   window.KS.PRESENT_FRAG = PRESENT_FRAG;
 })();

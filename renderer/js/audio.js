@@ -92,6 +92,32 @@
         map[i * 2 + 1] = b1;
       }
       this.logMap = map;
+
+      const bandRange = (fLow, fHigh) => [
+        Math.max(1, Math.floor((fLow / nyquist) * binCount)),
+        Math.min(binCount - 1, Math.ceil((fHigh / nyquist) * binCount)),
+      ];
+      this.bandBins = {
+        subBass: bandRange(20, 70),
+        bass: bandRange(20, 150),
+        lowMid: bandRange(150, 500),
+        mid: bandRange(500, 2000),
+        high: bandRange(2000, 12000),
+      };
+    }
+
+    _avgBand(range, minDb, dbSpan, sens, gainScale) {
+      const b0 = range[0];
+      const b1 = range[1];
+      let sum = 0;
+      let count = 0;
+      for (let b = b0; b <= b1; b++) {
+        const db = this.freqData[b];
+        const norm = Math.max(0, Math.min(1, ((db - minDb) / dbSpan) * sens));
+        sum += norm;
+        count++;
+      }
+      return count > 0 ? Math.min(1, (sum / count) * gainScale) : 0;
     }
 
     _stopCurrentSource() {
@@ -376,8 +402,6 @@
       const rawRms = Math.sqrt(sumSq / SPECTRUM_BINS);
 
       const map = this.logMap;
-      const binCount = this.analyser.frequencyBinCount;
-      const nyquist = (this.ctx ? this.ctx.sampleRate : 48000) * 0.5;
 
       let rawMaxSpec = 0;
       let fluxSum = 0;
@@ -411,25 +435,12 @@
       );
       const gainScale = Math.min(2.2, 0.85 / this.autoGainPeak);
 
-      const bandAvg = (fLow, fHigh) => {
-        const b0 = Math.max(1, Math.floor((fLow / nyquist) * binCount));
-        const b1 = Math.min(binCount - 1, Math.ceil((fHigh / nyquist) * binCount));
-        let sum = 0;
-        let count = 0;
-        for (let b = b0; b <= b1; b++) {
-          const db = this.freqData[b];
-          const norm = Math.max(0, Math.min(1, ((db - minDb) / dbSpan) * sens));
-          sum += norm;
-          count++;
-        }
-        return count > 0 ? Math.min(1, (sum / count) * gainScale) : 0;
-      };
-
-      const subBass = bandAvg(20, 70);
-      const bass = bandAvg(20, 150);
-      const lowMid = bandAvg(150, 500);
-      const mid = bandAvg(500, 2000);
-      const high = bandAvg(2000, 12000);
+      const bb = this.bandBins;
+      const subBass = this._avgBand(bb.subBass, minDb, dbSpan, sens, gainScale);
+      const bass = this._avgBand(bb.bass, minDb, dbSpan, sens, gainScale);
+      const lowMid = this._avgBand(bb.lowMid, minDb, dbSpan, sens, gainScale);
+      const mid = this._avgBand(bb.mid, minDb, dbSpan, sens, gainScale);
+      const high = this._avgBand(bb.high, minDb, dbSpan, sens, gainScale);
 
       this.bands.subBass = this.bands.subBass * 0.5 + subBass * 0.5;
       this.bands.bass = this.bands.bass * 0.55 + bass * 0.45;

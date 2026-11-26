@@ -37,6 +37,8 @@
         window.kaleido.setAlwaysOnTop(val);
       } else if (key === 'keepAwake') {
         window.kaleido.setKeepAwake(val);
+      } else if (key === 'autoQuality' && !val) {
+        gl.setDynamicScale(1.0);
       }
       window.KS.saveSettings(settings);
     };
@@ -69,11 +71,15 @@
     window.kaleido.setAlwaysOnTop(!!settings.alwaysOnTop);
     window.kaleido.setKeepAwake(settings.keepAwake !== false);
 
-    // Animation loop with optional FPS cap & visibility pause
+    // Animation loop with smoothed dt, adaptive quality, FPS cap & visibility pause
     let rafId = null;
-    let lastTime = performance.now();
-    let lastRenderTime = lastTime;
+    let lastRenderTime = performance.now();
+    let smoothedDt = 0.016;
     let fpsSmoothed = 60;
+    let frameMsEma = 16.6;
+    let slowAccum = 0;
+    let fastAccum = 0;
+    let dynScale = 1.0;
     let cycleElapsed = 0;
     let cycleWaitingBeat = false;
     let cycleBeatMark = 0;
@@ -88,22 +94,46 @@
         }
       }
 
-      const dt = Math.min(0.1, Math.max(0.001, (now - lastTime) / 1000));
-      const renderDt = Math.min(0.1, Math.max(0.001, (now - lastRenderTime) / 1000));
-      lastTime = now;
+      const rawDt = Math.min(0.05, Math.max(0.001, (now - lastRenderTime) / 1000));
       lastRenderTime = now;
+      smoothedDt = smoothedDt * 0.82 + rawDt * 0.18;
 
-      const instantFps = 1 / renderDt;
+      const rawMs = rawDt * 1000;
+      frameMsEma = frameMsEma * 0.9 + rawMs * 0.1;
+      const instantFps = 1 / rawDt;
       fpsSmoothed = fpsSmoothed * 0.9 + instantFps * 0.1;
 
-      audio.update(renderDt, settings.sensitivity);
+      if (settings.autoQuality !== false && !window.__KS_KEEP_UI_VISIBLE) {
+        if (frameMsEma > 22) {
+          slowAccum += rawDt;
+          fastAccum = 0;
+          if (slowAccum >= 1.5 && dynScale > 0.6) {
+            dynScale = Math.max(0.6, +(dynScale - 0.1).toFixed(2));
+            gl.setDynamicScale(dynScale);
+            slowAccum = 0;
+          }
+        } else if (frameMsEma < 11) {
+          fastAccum += rawDt;
+          slowAccum = 0;
+          if (fastAccum >= 3.5 && dynScale < 1.0) {
+            dynScale = Math.min(1.0, +(dynScale + 0.08).toFixed(2));
+            gl.setDynamicScale(dynScale);
+            fastAccum = 0;
+          }
+        } else {
+          slowAccum = 0;
+          fastAccum = 0;
+        }
+      }
+
+      audio.update(smoothedDt, settings.sensitivity);
       gl.uploadAudio(audio.audioTex);
-      gl.render(settings, audio, renderDt);
-      ui.updateRuntimeIndicators(audio, fpsSmoothed);
+      gl.render(settings, audio, smoothedDt);
+      ui.updateRuntimeIndicators(audio, fpsSmoothed, now);
 
       // Auto-cycle on beat after interval elapses
       if (settings.autoCycle) {
-        cycleElapsed += renderDt;
+        cycleElapsed += rawDt;
         if (!cycleWaitingBeat && cycleElapsed >= settings.cycleInterval) {
           cycleWaitingBeat = true;
           cycleBeatMark = audio.beatCount;
@@ -124,8 +154,7 @@
 
     const startLoop = () => {
       if (rafId === null) {
-        lastTime = performance.now();
-        lastRenderTime = lastTime;
+        lastRenderTime = performance.now();
         rafId = requestAnimationFrame(frame);
       }
     };
@@ -145,6 +174,11 @@
         audio.resume();
         startLoop();
       }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      stopLoop();
+      gl.dispose();
     });
 
     startLoop();

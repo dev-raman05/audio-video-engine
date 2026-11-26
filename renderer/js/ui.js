@@ -30,13 +30,19 @@
       this.silenceHint = document.getElementById('silence-hint');
       this.fpsBadge = document.getElementById('fps-badge');
       this.toastEl = document.getElementById('toast-badge');
+      this.showUiBtn = document.getElementById('btn-show-ui');
       this.helpOverlay = document.getElementById('help-overlay');
 
       this.uiHidden = false;
       this.isFullscreen = false;
       this.isPointerDown = false;
+      this.panelHovered = false;
       this.idleTimer = null;
       this.toastTimer = null;
+      this.lastLevelQ = -1;
+      this.lastFpsUpdateMs = 0;
+      this.lastFpsText = '';
+      this.lastSilenceShown = null;
 
       this._buildLists();
       this._bindSlidersAndToggles();
@@ -148,6 +154,7 @@
       bindToggle('toggle-auto-cycle', 'autoCycle');
       bindToggle('toggle-beat-flash', 'beatFlash');
       bindToggle('toggle-beat-shake', 'beatShake');
+      bindToggle('toggle-auto-quality', 'autoQuality');
       bindToggle('toggle-always-top', 'alwaysOnTop');
       bindToggle('toggle-keep-awake', 'keepAwake');
       bindToggle('toggle-show-fps', 'showFps');
@@ -185,6 +192,7 @@
         this.showToast(`Display ${res.index + 1} / ${res.count}`);
       });
       document.getElementById('btn-hide-ui').addEventListener('click', () => this.setUiHidden(true));
+      this.showUiBtn.addEventListener('click', () => this.setUiHidden(false));
       document.getElementById('btn-shuffle').addEventListener('click', () => this.shuffleModeAndPalette());
       document.getElementById('btn-help').addEventListener('click', () => this.toggleHelp());
       document.getElementById('help-close-btn').addEventListener('click', () => this.toggleHelp(false));
@@ -264,6 +272,14 @@
           this.onMouseMove(nx, ny);
         }
       };
+      this.panel.addEventListener('mouseenter', () => {
+        this.panelHovered = true;
+        if (this.idleTimer) clearTimeout(this.idleTimer);
+      });
+      this.panel.addEventListener('mouseleave', () => {
+        this.panelHovered = false;
+        this._resetIdleTimer();
+      });
       window.addEventListener('mousemove', wake);
       window.addEventListener('pointerdown', (e) => {
         this.isPointerDown = true;
@@ -278,12 +294,13 @@
 
     _resetIdleTimer() {
       if (this.idleTimer) clearTimeout(this.idleTimer);
+      const delay = this.uiHidden ? 2500 : 3000;
       this.idleTimer = setTimeout(() => {
         const helpOpen = !this.helpOverlay.classList.contains('hidden');
-        if (!this.isPointerDown && !helpOpen && !window.__KS_KEEP_UI_VISIBLE) {
+        if (!this.isPointerDown && !this.panelHovered && !helpOpen && !window.__KS_KEEP_UI_VISIBLE) {
           document.body.classList.add('idle-hidden');
         }
-      }, 3000);
+      }, delay);
     }
 
     async toggleFullscreen() {
@@ -294,8 +311,13 @@
     setUiHidden(hidden) {
       this.uiHidden = !!hidden;
       document.body.classList.toggle('ui-manually-hidden', this.uiHidden);
+      this.showUiBtn.classList.toggle('hidden', !this.uiHidden);
+      document.body.classList.remove('idle-hidden');
+      this._resetIdleTimer();
       if (this.uiHidden) {
-        this.showToast('UI hidden (press H to show)');
+        this.showToast('Controls hidden — press H or click top-right pill to show', 2800);
+      } else {
+        this.showToast('Controls shown', 1400);
       }
     }
 
@@ -355,13 +377,13 @@
       this.showToast(`Intensity: ${Math.round(next * 100)}%`);
     }
 
-    showToast(text) {
+    showToast(text, durationMs) {
       this.toastEl.textContent = text;
       this.toastEl.classList.remove('hidden');
       if (this.toastTimer) clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => {
         this.toastEl.classList.add('hidden');
-      }, 1800);
+      }, durationMs || 1800);
     }
 
     showStartOverlay() {
@@ -395,14 +417,33 @@
       this.statusText.textContent = info.message;
     }
 
-    updateRuntimeIndicators(audio, fps) {
-      this.levelFill.style.width = `${Math.round(Math.min(1, audio.level) * 100)}%`;
-      const showSilence = audio.silent && audio.sourceType !== 'demo' && audio.status === 'live';
-      this.silenceHint.classList.toggle('hidden', !showSilence);
+    updateRuntimeIndicators(audio, fps, now) {
+      if (!this.uiHidden && !document.body.classList.contains('idle-hidden')) {
+        const q = Math.round(Math.min(1, audio.level) * 100) / 100;
+        if (q !== this.lastLevelQ) {
+          this.lastLevelQ = q;
+          this.levelFill.style.transform = `scaleX(${q})`;
+        }
+      }
 
-      this.fpsBadge.classList.toggle('hidden', !this.settings.showFps);
-      if (this.settings.showFps) {
-        this.fpsBadge.textContent = `${Math.round(fps)} FPS`;
+      const showSilence = audio.silent && audio.sourceType !== 'demo' && audio.status === 'live';
+      if (showSilence !== this.lastSilenceShown) {
+        this.lastSilenceShown = showSilence;
+        this.silenceHint.classList.toggle('hidden', !showSilence);
+      }
+
+      const showFps = !!this.settings.showFps;
+      this.fpsBadge.classList.toggle('hidden', !showFps);
+      if (showFps) {
+        const ts = now || performance.now();
+        if (ts - this.lastFpsUpdateMs >= 250) {
+          this.lastFpsUpdateMs = ts;
+          const text = `${Math.round(fps)} FPS`;
+          if (text !== this.lastFpsText) {
+            this.lastFpsText = text;
+            this.fpsBadge.textContent = text;
+          }
+        }
       }
     }
 
@@ -440,6 +481,7 @@
       document.getElementById('toggle-auto-cycle').checked = !!this.settings.autoCycle;
       document.getElementById('toggle-beat-flash').checked = !!this.settings.beatFlash;
       document.getElementById('toggle-beat-shake').checked = this.settings.beatShake !== false;
+      document.getElementById('toggle-auto-quality').checked = this.settings.autoQuality !== false;
       document.getElementById('toggle-always-top').checked = !!this.settings.alwaysOnTop;
       document.getElementById('toggle-keep-awake').checked = !!this.settings.keepAwake;
       document.getElementById('toggle-show-fps').checked = !!this.settings.showFps;

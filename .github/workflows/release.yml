@@ -60,6 +60,21 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
 
+      - name: Verify macOS ad-hoc code signatures (arm64 & x64)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          APPS=(dist/mac*/KaleidoSync.app)
+          if [ ${#APPS[@]} -lt 2 ]; then
+            echo "Expected arm64 and x64 .app bundles, found: ${APPS[*]}"
+            exit 1
+          fi
+          for app in "${APPS[@]}"; do
+            echo "Verifying $app ..."
+            codesign --verify --deep --strict --verbose=2 "$app"
+          done
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -121,7 +136,10 @@ jobs:
           Click the direct installer for your OS below (no zip extraction required):
 
           - **Windows (`x64`):** `KaleidoSync-Windows-Setup.exe` — double-click to install and run (creates Desktop & Start Menu shortcuts; if Windows SmartScreen warns about an unsigned app, click **More info → Run anyway**).
-          - **macOS (`arm64` Apple Silicon & `x64` Intel):** `KaleidoSync-macOS-arm64.dmg` or `KaleidoSync-macOS-x64.dmg` — open the `.dmg`, drag **KaleidoSync** to **Applications**, **right-click → Open** on first launch (or run `xattr -cr /Applications/KaleidoSync.app`), and allow **Screen & System Audio Recording** when prompted.
+          - **macOS (`arm64` Apple Silicon M1–M5 & `x64` Intel):** `KaleidoSync-macOS-arm64.dmg` or `KaleidoSync-macOS-x64.dmg` — ad-hoc signed for Apple Silicon & Intel. Open the `.dmg`, drag **KaleidoSync** to **Applications**, then either:
+            - **System Settings → Privacy & Security → Open Anyway** (after first double-click on macOS Sequoia/Tahoe) or **right-click → Open**, OR
+            - Run `xattr -cr /Applications/KaleidoSync.app` in Terminal (or install via 1-line Terminal command in README to avoid browser quarantine).
+            - Allow **Screen & System Audio Recording** when prompted for system audio loopback.
           - **Linux (`x64`):** `KaleidoSync-Linux-x64.AppImage` (`chmod +x KaleidoSync-Linux-x64.AppImage && ./KaleidoSync-Linux-x64.AppImage`) or `KaleidoSync-Linux-x64.deb` (`sudo apt install ./KaleidoSync-Linux-x64.deb`). On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your `Monitor of ...` device under **Microphone / Line-In**.
           EOF
 
