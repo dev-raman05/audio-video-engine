@@ -22,22 +22,25 @@ curl -L -o /tmp/KaleidoSync.dmg https://github.com/dev-raman05/audio-video-engin
 You can also browse **[All Releases](https://github.com/dev-raman05/audio-video-engine/releases)**.
 
 ### 1-Click In-Place Updates (No Reinstall Hassle)
-Once installed, KaleidoSync checks GitHub Releases automatically on startup (or anytime via **Check Updates**). When a new version is out, click **Install & Restart** right inside the app—it downloads the matching installer for your OS (Windows `.exe`, macOS `.dmg` `arm64`/`x64`, or Linux `.AppImage`/`.deb`), updates your existing installation **in place** while keeping your settings, and relaunches automatically.
+Once installed, KaleidoSync checks GitHub Releases automatically on startup (or anytime via **Check Updates**). When a new version is out, click **Install & Restart** right inside the app—it downloads the matching installer for your OS (Windows `.exe`, macOS `.dmg` `arm64`/`x64`, or Linux `.AppImage`/`.deb`), verifies its **SHA-256 checksum** against `SHA256SUMS.txt`, updates your existing installation **in place** while keeping your settings, and relaunches automatically.
 
 ---
 
 ## Features
 
-- **Any-Source System Audio:** Passive system audio loopback via Electron `getDisplayMedia`. Never modifies audio output or interferes with other apps. Also supports Microphone/Line-In and a silent synthetic Demo Beat mode.
-- **20 Genre-Tailored & Symmetric Shaders:**
+- **Any-Source System Audio + Hot-Swap Guardrail:** Passive system audio loopback via Electron `getDisplayMedia`. Never modifies audio output or interferes with other apps. Also supports Microphone/Line-In and a silent synthetic Demo Beat mode, with automatic `devicechange` hot-swap recovery.
+- **21 Genre-Tailored, Beat- & Tune-Reactive Shaders:**
   - **EDM / Techno / Synthwave:** *Festival Supernova*, *Warehouse Laser Grid*, *Outrun Cyber Sun*, *Kaleido Bloom*
   - **Hip-Hop / Trap / Beats:** *808 Sub Shockwave*, *Boom-Bap Vinyl Vortex*, *Mirror Bars*
   - **Indie / Alternative:** *Indie Dreamscape*, *Vinyl & Prism Waves*
   - **Rock / Metal / Progressive:** *Amp Overdrive*, *Inferno Mosh*, *Polyrhythm Tesseract*, *Tunnel Warp*
-  - **Ambient / Classical / Geometry:** *Mandala Rings*, *Radial Spectrum*, *Fractal Kaleido*, *Wave Mandala*, *Liquid Plasma*, *Nebula Starfield*, *Sacred Hex*
-- **14 Genre Presets & 13 Color Palettes:** One-click tuning for EDM/Festival, Techno/Rave, Hip-Hop/808, Boom-Bap, Indie/Dream Pop, Indie/Alt Waves, Rock/Overdrive, Heavy Metal, Progressive/Math, Psychedelic, Synthwave, Classical, Jazz/Lo-fi, and Casual Aesthetic.
-- **Immersive Post-FX:** Adjustable **Neon Bloom**, **Prism Chromatic Aberration**, **Bass Camera Punch** (subtle zoom kick), **Beat Flash**, and smooth mode-switch trail morphing.
-- **Projector & Background Friendly:** Auto-hiding control panel and cursor (3s inactivity), multi-display projector routing (`Next Display`), display sleep prevention (`Keep Screen Awake`), and optional `Always on Top`.
+  - **Hypnotic / Ambient / Classical / Geometry:** *Trance Spiral*, *Mandala Rings*, *Radial Spectrum*, *Fractal Kaleido*, *Wave Mandala*, *Liquid Plasma*, *Nebula Starfield*, *Sacred Hex*
+- **Live Audio Mood Auto-Pilot (AI-Free):** Classifies live spectral energy, tempo, and bass pulse in real time (`calm`, `indie`, `hiphop`, `rock`, `edm`) and smoothly transitions into matching visual modes without any external AI dependency.
+- **VJ Dual-Layer Blending & True GPU Crossfade:** Blend a secondary overlay shader (`Mix`, `Screen Glow`, or `Prism Difference`) onto the active canvas and transition between modes with zero-glitch GPU crossfades.
+- **BPM-Locked Transitions & Drop Detector:** Tracks live tempo (`BPM`) and musical bars (`16-bar` phrase locks), plus detects bass drops to trigger beat-aligned mode switches and subtle zoom punches.
+- **Dual-Screen Stage / Projector Mode:** Keep your VJ controls on your laptop screen while pushing a pure, UI-free fullscreen output (`?stage=1`) directly to your connected projector or external display at 1× GPU load.
+- **14 Genre Presets & 13 Color Palettes:** One-click tuning for EDM/Festival, Techno/Rave, Hip-Hop/808, Boom-Bap, Indie/Dream Pop, Indie/Alt Waves, Rock/Overdrive, Heavy Metal, Progressive/Math, Psychedelic, Synthwave, Classical, Jazz/Lo-fi, and Casual Aesthetic, dynamically modulated by melodic pitch (`tuneHue`) and spectral centroid.
+- **WebGL Recovery & Signing Guardrails:** Automatic `webglcontextlost` / `webglcontextrestored` recovery across sleep/wake, HDMI hot-plug, or GPU resets; keep-screen-awake support; and optional **Code Signing & Apple Notarization** in CI when repository secrets are configured (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for macOS; `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows).
 - **On-Demand Only:** No background service, no system tray process, no auto-start, and no global hotkeys. Closing the window exits completely.
 
 ## Privacy

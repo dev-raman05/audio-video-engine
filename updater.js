@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const REPO_OWNER = 'dev-raman05';
@@ -115,10 +116,10 @@ function requestWithRedirects(url, headers, redirectsLeft = 6) {
   });
 }
 
-async function fetchJson(url) {
+async function fetchText(url, accept = 'text/plain') {
   const res = await requestWithRedirects(url, {
     'User-Agent': 'KaleidoSync-Updater',
-    Accept: 'application/vnd.github+json',
+    Accept: accept,
   });
   return new Promise((resolve, reject) => {
     let body = '';
@@ -128,17 +129,46 @@ async function fetchJson(url) {
     });
     res.on('end', () => {
       if ((res.statusCode || 0) >= 400) {
-        reject(new Error(`GitHub API HTTP ${res.statusCode}`));
+        reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
-      try {
-        resolve(JSON.parse(body));
-      } catch (err) {
-        reject(err);
-      }
+      resolve(body);
     });
     res.on('error', reject);
   });
+}
+
+async function fetchJson(url) {
+  const body = await fetchText(url, 'application/vnd.github+json');
+  return JSON.parse(body);
+}
+
+function sha256File(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex').toLowerCase()));
+    stream.on('error', reject);
+  });
+}
+
+function parseSha256Sums(text, fileName) {
+  if (!text || !fileName) return null;
+  const target = path.basename(fileName).toLowerCase();
+  const lines = String(text).split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const match = trimmed.match(/^([a-fA-F0-9]{64})\s+[* ]?(.+)$/);
+    if (!match) continue;
+    const digest = match[1].toLowerCase();
+    const entryName = path.basename(match[2].trim().replace(/^\.\//, '')).toLowerCase();
+    if (entryName === target) {
+      return digest;
+    }
+  }
+  return null;
 }
 
 async function downloadFile(url, destPath, onProgress) {
@@ -193,6 +223,9 @@ async function checkForUpdates(currentVersion) {
 
     const updateAvailable = compareSemver(latestVersion, currentVersion) > 0;
     const asset = pickAssetForPlatform(release.assets, process.platform, process.arch, process.env);
+    const checksumAsset = Array.isArray(release.assets)
+      ? release.assets.find((a) => a && a.name === 'SHA256SUMS.txt')
+      : null;
 
     return {
       ok: true,
@@ -202,6 +235,7 @@ async function checkForUpdates(currentVersion) {
       assetName: asset ? asset.name : null,
       assetSize: asset ? asset.size : 0,
       downloadUrl: asset ? asset.browser_download_url : null,
+      checksumUrl: checksumAsset ? checksumAsset.browser_download_url : null,
       releaseUrl: release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
     };
   } catch (err) {
@@ -335,6 +369,25 @@ async function downloadAndInstallUpdate({ currentVersion, isPackaged, exePath, o
   const destPath = path.join(os.tmpdir(), `KaleidoSync-Update-${info.latestVersion}-${info.assetName}`);
   await downloadFile(info.downloadUrl, destPath, onProgress);
 
+  if (info.checksumUrl) {
+    if (typeof onProgress === 'function') {
+      onProgress({ phase: 'verifying', percent: 100, received: info.assetSize, total: info.assetSize });
+    }
+    const sumsText = await fetchText(info.checksumUrl, 'text/plain');
+    const expectedHash = parseSha256Sums(sumsText, info.assetName);
+    if (expectedHash) {
+      const actualHash = await sha256File(destPath);
+      if (actualHash !== expectedHash) {
+        try {
+          fs.unlinkSync(destPath);
+        } catch (_err) {
+          // Ignore cleanup errors after mismatch.
+        }
+        throw new Error('Update checksum verification failed (SHA-256 mismatch)');
+      }
+    }
+  }
+
   if (typeof onProgress === 'function') {
     onProgress({ phase: 'installing', percent: 100, received: info.assetSize, total: info.assetSize });
   }
@@ -356,6 +409,8 @@ async function downloadAndInstallUpdate({ currentVersion, isPackaged, exePath, o
 module.exports = {
   compareSemver,
   pickAssetForPlatform,
+  sha256File,
+  parseSha256Sums,
   checkForUpdates,
   downloadFile,
   downloadAndInstallUpdate,

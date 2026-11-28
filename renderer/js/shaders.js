@@ -873,38 +873,38 @@ void main() {
     {
       id: 'hypnotic-vortex',
       name: 'Trance Spiral',
-      tags: ['Risky', 'Hypnotic'],
-      risky: true,
+      tags: ['Hypnotic', 'Psychedelic'],
       frag: `
 void main() {
   vec2 p = normUv();
   float r = length(p);
   float a = atan(p.y, p.x);
 
-  float arms = max(3.0, floor(uSegments * 0.5) * 2.0);
-  float t = uTime * 0.85;
-  float breath = 0.5 + 0.5 * sin(uTime * 0.95);
-  float logR = log(r + 0.018);
+  float arms = max(4.0, floor(uSegments * 0.5) * 2.0);
+  float t = uTime * 1.15;
+  float logR = log(max(0.004, r));
 
-  float s = spec(clamp(r * 0.45, 0.02, 0.92));
-  float warp = 0.22 * sin(logR * 2.6 - t * 0.7) * (0.4 + uMid);
+  float s = spec(clamp(r * 0.42, 0.02, 0.92));
+  float breath = 0.5 + 0.5 * sin(uTime * 1.1);
 
-  float sp1 = sin(logR * 7.8 - a * arms - t * 1.15 + warp - uSubBass * 0.55);
-  float sp2 = sin(logR * 4.6 + a * (arms * 0.5) + t * 0.68 + s * 0.9);
-  float moire = 0.5 + 0.5 * (sp1 * 0.62 + sp2 * 0.38);
+  float sp1 = cos(logR * 12.5 - a * arms - t * 2.5 - uSubBass * 1.4 + s * 1.2);
+  float sp2 = sin(logR * 7.5 + a * arms + t * 1.7 + uMid * 1.2);
+  float rings = cos(logR * 18.0 - t * 4.2 + s * 3.5 + uBass * 1.3);
 
-  float haze = fbm(vec2(logR * 1.8 - t * 0.25, sin(a * 2.0) + cos(a * 2.0)));
-  float rings = 0.5 + 0.5 * sin(logR * 11.5 - t * 1.65 + uBass * 0.9);
-  float band = smoothstep(0.14, 0.88, mix(moire, rings, 0.32 + 0.2 * breath));
+  float contrast1 = smoothstep(-0.22, 0.22, sp1);
+  float contrast2 = smoothstep(-0.35, 0.35, sp2);
+  float moire = mix(contrast1, abs(contrast1 - contrast2), 0.42);
+  float depthWave = 0.5 + 0.5 * rings;
 
-  float periphFade = smoothstep(1.65, 0.12, r + 0.12 * (1.0 - breath));
-  float fixation = exp(-r * 14.0) * (0.75 + 0.35 * breath + uBeat * 0.2);
+  float pupil = sin(r * 52.0 - t * 5.0) * exp(-r * 5.5);
+  float pupilRing = smoothstep(-0.2, 0.4, pupil) * exp(-r * 3.2);
 
-  vec3 velvet = pal(logR * 0.28 - t * 0.08 + haze * 0.35);
-  vec3 prism = pal(sp1 * 0.35 + sp2 * 0.25 + 0.45);
-  vec3 col = mix(velvet * 0.18, prism * (0.75 + 0.55 * s), band) * periphFade;
-  col += pal(0.15 + breath * 0.25) * fixation * 1.35;
-  col += velvet * haze * 0.22 * (0.4 + uLevel) * periphFade;
+  vec3 cA = pal(logR * 0.35 - t * 0.14 + uHueShift);
+  vec3 cB = pal(sp2 * 0.4 + rings * 0.25 + 0.52 + uHueShift);
+  vec3 col = mix(vec3(0.008, 0.004, 0.02), cA * (0.85 + 0.55 * s), moire);
+  col += cB * depthWave * (0.28 + 0.45 * breath + uBeat * 0.35);
+  col += pal(0.2 + t * 0.1) * pupilRing * 1.45;
+  col *= smoothstep(2.1, 0.04, r);
 
   fragColor = vec4(col * uIntensity, 1.0);
 }
@@ -918,19 +918,35 @@ in vec2 vUv;
 out vec4 fragColor;
 
 uniform sampler2D uScene;
+uniform sampler2D uSceneB;
 uniform sampler2D uHistory;
+uniform float uMixB;
+uniform int uBlendType;
 uniform float uTrails;
 uniform float uBass;
+uniform float uDrop;
 uniform float uSpeed;
 uniform float uTime;
 uniform float uBeatShake;
 uniform vec2 uMouse;
 
 void main() {
-  vec3 scene = texture(uScene, vUv).rgb;
+  vec3 sceneA = texture(uScene, vUv).rgb;
+  vec3 scene = sceneA;
+
+  if (uMixB > 0.001) {
+    vec3 sceneB = texture(uSceneB, vUv).rgb;
+    if (uBlendType == 0) {
+      scene = mix(sceneA, sceneB, uMixB);
+    } else if (uBlendType == 1) {
+      scene = 1.0 - (1.0 - min(sceneA, 1.0)) * (1.0 - min(sceneB, 1.0) * uMixB);
+    } else {
+      scene = mix(sceneA, abs(sceneA - sceneB) * 1.45, uMixB);
+    }
+  }
 
   vec2 centered = vUv - 0.5;
-  float zoom = 1.0 - (0.012 + 0.012 * uBeatShake) * uBass;
+  float zoom = 1.0 - (0.012 + 0.012 * uBeatShake) * (uBass + uDrop * 0.4);
   float a = 0.0028 * sin(uTime * 0.5) * uSpeed + uMouse.x * 0.002;
   float c = cos(a);
   float s = sin(a);

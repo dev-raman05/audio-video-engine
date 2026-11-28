@@ -1,6 +1,6 @@
 {
   "name": "kaleidosync",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Cross-platform (Windows, macOS, Linux) audio-reactive WebGL2 kaleidoscope visualizer",
   "homepage": "https://github.com/dev-raman05/audio-video-engine",
   "main": "main.js",

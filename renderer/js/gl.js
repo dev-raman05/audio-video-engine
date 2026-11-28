@@ -5,16 +5,6 @@
   class GLRenderer {
     constructor(canvas) {
       this.canvas = canvas;
-      this.gl = canvas.getContext('webgl2', {
-        alpha: false,
-        antialias: false,
-        depth: false,
-        stencil: false,
-        desynchronized: true,
-        powerPreference: 'high-performance',
-      });
-
-      this.ok = !!this.gl;
       this.compiledModes = [];
       this.failedModes = [];
       this.modeMap = new Map();
@@ -30,6 +20,55 @@
       this.histIdx = 0;
       this.mouse = [0, 0];
       this.targetMouse = [0, 0];
+      this.contextLost = false;
+      this.onContextRestored = null;
+
+      this.crossfadeFrom = null;
+      this.crossfadeTo = null;
+      this.crossfadeElapsed = 0;
+      this.crossfadeDuration = 0;
+
+      this.sceneFbo = null;
+      this.sceneFboB = null;
+      this.historyFbos = [null, null];
+      this.bloomFbo = null;
+
+      this.canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        this.contextLost = true;
+      });
+
+      this.canvas.addEventListener('webglcontextrestored', () => {
+        this._initGL();
+        this.contextLost = false;
+        if (typeof this.onContextRestored === 'function') {
+          this.onContextRestored();
+        }
+      });
+
+      this._initGL();
+    }
+
+    _initGL() {
+      this.gl = this.canvas.getContext('webgl2', {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        desynchronized: true,
+        powerPreference: 'high-performance',
+      });
+
+      this.ok = !!this.gl;
+      this.compiledModes = [];
+      this.failedModes = [];
+      this.modeMap = new Map();
+      this.sceneFbo = null;
+      this.sceneFboB = null;
+      this.historyFbos = [null, null];
+      this.bloomFbo = null;
+      this.width = 0;
+      this.height = 0;
 
       if (!this.gl) return;
 
@@ -40,16 +79,12 @@
       this.texFormat = fmt.format;
       this.texType = fmt.type;
 
-      // Empty VAO for gl_VertexID fullscreen triangle
       this.vao = gl.createVertexArray();
       gl.bindVertexArray(this.vao);
 
       this.vertShader = this._compileShader(gl.VERTEX_SHADER, window.KS.VERT_SRC, 'vertex');
       this._initPrograms();
       this._initAudioTexture();
-      this.sceneFbo = null;
-      this.historyFbos = [null, null];
-      this.bloomFbo = null;
     }
 
     _pickColorFormat() {
@@ -89,6 +124,15 @@
     setMouse(nx, ny) {
       this.targetMouse[0] = Math.max(-1, Math.min(1, nx || 0));
       this.targetMouse[1] = Math.max(-1, Math.min(1, ny || 0));
+    }
+
+    startCrossfade(fromModeId, toModeId, durationSec) {
+      if (!fromModeId || !toModeId || fromModeId === toModeId) return;
+      if (!this.modeMap.has(fromModeId) || !this.modeMap.has(toModeId)) return;
+      this.crossfadeFrom = fromModeId;
+      this.crossfadeTo = toModeId;
+      this.crossfadeElapsed = 0;
+      this.crossfadeDuration = Math.max(0.4, durationSec || 2.0);
     }
 
     _compileShader(type, source, label) {
@@ -170,7 +214,6 @@
             id: mode.id,
             name: mode.name,
             tags: mode.tags,
-            risky: !!mode.risky,
             program: res.program,
             u: this._getUniforms(res.program, modeUniforms),
           };
@@ -187,9 +230,13 @@
         this.compProg = compRes.program;
         this.compU = this._getUniforms(this.compProg, [
           'uScene',
+          'uSceneB',
           'uHistory',
+          'uMixB',
+          'uBlendType',
           'uTrails',
           'uBass',
+          'uDrop',
           'uSpeed',
           'uTime',
           'uBeatShake',
@@ -277,7 +324,7 @@
     }
 
     ensureSize(renderScale) {
-      if (!this.ok) return;
+      if (!this.ok || this.contextLost) return;
       const scale = Math.max(0.25, Math.min(1.0, renderScale || 1.0)) * this.dynamicScale;
       const dpr = Math.min(1.25, window.devicePixelRatio || 1);
       const cw = this.canvas.clientWidth || window.innerWidth;
@@ -303,11 +350,13 @@
       this.canvas.height = targetH;
 
       this._destroyFbo(this.sceneFbo);
+      this._destroyFbo(this.sceneFboB);
       this._destroyFbo(this.historyFbos[0]);
       this._destroyFbo(this.historyFbos[1]);
       this._destroyFbo(this.bloomFbo);
 
       this.sceneFbo = this._createFbo(targetW, targetH);
+      this.sceneFboB = this._createFbo(targetW, targetH);
       this.historyFbos[0] = this._createFbo(targetW, targetH);
       this.historyFbos[1] = this._createFbo(targetW, targetH);
       this.bloomFbo = this._createFbo(this.bloomW, this.bloomH);
@@ -319,7 +368,7 @@
     }
 
     uploadAudio(audioTexBytes) {
-      if (!this.ok || !audioTexBytes) return;
+      if (!this.ok || this.contextLost || !audioTexBytes) return;
       const gl = this.gl;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
@@ -327,13 +376,44 @@
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 512, 2, gl.RED, gl.UNSIGNED_BYTE, audioTexBytes);
     }
 
+    _drawModePass(targetFbo, modeEntry, settings, audio, pal, hueShift, effBeat) {
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targetFbo.fbo);
+      gl.useProgram(modeEntry.program);
+      const u = modeEntry.u;
+      gl.uniform1f(u.uTime, this.time);
+      gl.uniform2f(u.uRes, this.width, this.height);
+      gl.uniform1f(u.uSubBass, audio.bands.subBass || audio.bands.bass);
+      gl.uniform1f(u.uBass, audio.bands.bass);
+      gl.uniform1f(u.uMid, audio.bands.mid);
+      gl.uniform1f(u.uHigh, audio.bands.high);
+      gl.uniform1f(u.uFlux, audio.spectralFlux || 0);
+      gl.uniform1f(u.uLevel, audio.level);
+      gl.uniform1f(u.uBeat, effBeat);
+      gl.uniform1f(u.uBeatCount, audio.beatCount);
+      gl.uniform1f(u.uSegments, settings.segments);
+      gl.uniform1f(u.uSpeed, settings.speed);
+      gl.uniform1f(u.uIntensity, settings.intensity);
+      gl.uniform1f(u.uHueShift, hueShift);
+      gl.uniform2f(u.uMouse, this.mouse[0], this.mouse[1]);
+      gl.uniform3fv(u.uPalA, pal.a);
+      gl.uniform3fv(u.uPalB, pal.b);
+      gl.uniform3fv(u.uPalC, pal.c);
+      gl.uniform3fv(u.uPalD, pal.d);
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
+      gl.uniform1i(u.uAudio, 0);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
     render(settings, audio, dt) {
-      if (!this.ok || this.compiledModes.length === 0) return;
+      if (!this.ok || this.contextLost || this.compiledModes.length === 0) return;
 
       this.ensureSize(settings.renderScale);
 
       const gl = this.gl;
-      const modeEntry = this.modeMap.get(settings.mode) || this.compiledModes[0];
       const pal = window.KS.getPalette(settings.palette);
 
       const clampedDt = Math.min(0.05, Math.max(0.001, dt || 0.016));
@@ -346,38 +426,50 @@
         this.morphRemaining = Math.max(0, this.morphRemaining - clampedDt);
       }
 
+      const drop = audio.dropPulse || 0;
+      const effBeat = Math.min(1.5, (audio.beatPulse || 0) + drop * 0.7);
+      const hueShift =
+        (audio.tuneHue || 0) * 0.55 +
+        (audio.spectralCentroid || 0) * 0.25 +
+        (audio.beatCount % 16) * 0.025 +
+        drop * 0.35;
+
+      let primaryEntry = this.modeMap.get(settings.mode) || this.compiledModes[0];
+      let secondaryEntry = null;
+      let mixB = 0;
+      let blendType = settings.layerBlendType != null ? settings.layerBlendType : 1;
+
+      if (this.crossfadeFrom && this.crossfadeTo) {
+        this.crossfadeElapsed += clampedDt;
+        if (this.crossfadeElapsed >= this.crossfadeDuration) {
+          this.crossfadeFrom = null;
+          this.crossfadeTo = null;
+        } else {
+          const rawT = this.crossfadeElapsed / this.crossfadeDuration;
+          mixB = rawT * rawT * (3 - 2 * rawT);
+          primaryEntry = this.modeMap.get(this.crossfadeFrom) || primaryEntry;
+          secondaryEntry = this.modeMap.get(this.crossfadeTo) || null;
+          blendType = 0;
+        }
+      }
+
+      if (!secondaryEntry && settings.layerMode && (settings.layerBlend || 0) > 0.01) {
+        const layer = this.modeMap.get(settings.layerMode);
+        if (layer && layer.id !== primaryEntry.id) {
+          secondaryEntry = layer;
+          mixB = settings.layerBlend;
+          blendType = settings.layerBlendType != null ? settings.layerBlendType : 1;
+        }
+      }
+
       gl.bindVertexArray(this.vao);
       gl.viewport(0, 0, this.width, this.height);
 
-      // Pass 1: Mode shader -> sceneFbo
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFbo.fbo);
-      gl.useProgram(modeEntry.program);
-      const u = modeEntry.u;
-      gl.uniform1f(u.uTime, this.time);
-      gl.uniform2f(u.uRes, this.width, this.height);
-      gl.uniform1f(u.uSubBass, audio.bands.subBass || audio.bands.bass);
-      gl.uniform1f(u.uBass, audio.bands.bass);
-      gl.uniform1f(u.uMid, audio.bands.mid);
-      gl.uniform1f(u.uHigh, audio.bands.high);
-      gl.uniform1f(u.uFlux, audio.spectralFlux || 0);
-      gl.uniform1f(u.uLevel, audio.level);
-      gl.uniform1f(u.uBeat, audio.beatPulse);
-      gl.uniform1f(u.uBeatCount, audio.beatCount);
-      gl.uniform1f(u.uSegments, settings.segments);
-      gl.uniform1f(u.uSpeed, settings.speed);
-      gl.uniform1f(u.uIntensity, settings.intensity);
-      gl.uniform1f(u.uHueShift, (audio.beatCount % 16) * 0.02);
-      gl.uniform2f(u.uMouse, this.mouse[0], this.mouse[1]);
-      gl.uniform3fv(u.uPalA, pal.a);
-      gl.uniform3fv(u.uPalB, pal.b);
-      gl.uniform3fv(u.uPalC, pal.c);
-      gl.uniform3fv(u.uPalD, pal.d);
-
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
-      gl.uniform1i(u.uAudio, 0);
-
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      // Pass 1: Primary mode -> sceneFbo (+ optional Pass 1B -> sceneFboB)
+      this._drawModePass(this.sceneFbo, primaryEntry, settings, audio, pal, hueShift, effBeat);
+      if (secondaryEntry && mixB > 0.001) {
+        this._drawModePass(this.sceneFboB, secondaryEntry, settings, audio, pal, hueShift, effBeat);
+      }
 
       // Pass 2: Composite -> historyFbos[next]
       const prevIdx = this.histIdx;
@@ -393,11 +485,18 @@
       gl.uniform1i(this.compU.uScene, 0);
 
       gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.historyFbos[prevIdx].tex);
-      gl.uniform1i(this.compU.uHistory, 1);
+      gl.bindTexture(gl.TEXTURE_2D, this.sceneFboB.tex);
+      gl.uniform1i(this.compU.uSceneB, 1);
 
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.historyFbos[prevIdx].tex);
+      gl.uniform1i(this.compU.uHistory, 2);
+
+      gl.uniform1f(this.compU.uMixB, mixB);
+      gl.uniform1i(this.compU.uBlendType, blendType);
       gl.uniform1f(this.compU.uTrails, effectiveTrails);
       gl.uniform1f(this.compU.uBass, audio.bands.bass);
+      gl.uniform1f(this.compU.uDrop, drop);
       gl.uniform1f(this.compU.uSpeed, settings.speed);
       gl.uniform1f(this.compU.uTime, this.time);
       gl.uniform1f(this.compU.uBeatShake, beatShakeFlag);
@@ -406,7 +505,7 @@
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       // Pass 3: Quarter-res bloom -> bloomFbo
-      const bloomVal = settings.bloom != null ? settings.bloom : 0.7;
+      const bloomVal = (settings.bloom != null ? settings.bloom : 0.7) * (1.0 + drop * 0.35);
       if (bloomVal > 0.01 && this.bloomFbo) {
         gl.viewport(0, 0, this.bloomW, this.bloomH);
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomFbo.fbo);
@@ -431,12 +530,12 @@
       gl.bindTexture(gl.TEXTURE_2D, this.bloomFbo ? this.bloomFbo.tex : this.historyFbos[nextIdx].tex);
       gl.uniform1i(this.presU.uBloomTex, 1);
 
-      gl.uniform1f(this.presU.uBeat, audio.beatPulse);
+      gl.uniform1f(this.presU.uBeat, effBeat);
       gl.uniform1f(this.presU.uBass, audio.bands.bass);
       gl.uniform1f(this.presU.uBeatFlash, settings.beatFlash ? 1.0 : 0.0);
       gl.uniform1f(this.presU.uBeatShake, beatShakeFlag);
       gl.uniform1f(this.presU.uBloom, bloomVal);
-      gl.uniform1f(this.presU.uChromatic, settings.chromatic != null ? settings.chromatic : 0.65);
+      gl.uniform1f(this.presU.uChromatic, (settings.chromatic != null ? settings.chromatic : 0.65) + drop * 0.3);
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -447,6 +546,7 @@
       if (!this.gl) return;
       const gl = this.gl;
       this._destroyFbo(this.sceneFbo);
+      this._destroyFbo(this.sceneFboB);
       this._destroyFbo(this.historyFbos[0]);
       this._destroyFbo(this.historyFbos[1]);
       this._destroyFbo(this.bloomFbo);

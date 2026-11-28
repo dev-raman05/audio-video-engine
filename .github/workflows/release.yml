@@ -56,10 +56,42 @@ jobs:
           done
 
       - name: Build application installers
-        run: ${{ matrix.cmd }}
+        shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          MAC_CSC_LINK: ${{ secrets.CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+        run: |
+          if [ "${{ matrix.platform }}" = "mac" ] && [ -n "$MAC_CSC_LINK" ]; then
+            export CSC_LINK="$MAC_CSC_LINK"
+            export CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD"
+            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              npx electron-builder --mac dmg --arm64 --x64 --publish never \
+                -c.mac.identity= \
+                -c.mac.hardenedRuntime=true \
+                -c.mac.entitlements=build/entitlements.mac.plist \
+                -c.mac.entitlementsInherit=build/entitlements.mac.plist \
+                -c.mac.notarize=true
+            else
+              npx electron-builder --mac dmg --arm64 --x64 --publish never \
+                -c.mac.identity= \
+                -c.mac.hardenedRuntime=true \
+                -c.mac.entitlements=build/entitlements.mac.plist \
+                -c.mac.entitlementsInherit=build/entitlements.mac.plist
+            fi
+          elif [ "${{ matrix.platform }}" = "win" ] && [ -n "$WIN_CSC_LINK" ]; then
+            export CSC_LINK="$WIN_CSC_LINK"
+            export CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD"
+            npm run dist:win -- --publish never
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            ${{ matrix.cmd }}
+          fi
 
       - name: Verify macOS ad-hoc code signatures (arm64 & x64)
         if: matrix.platform == 'mac'
@@ -124,6 +156,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
           mapfile -t ASSETS < <(find release-assets -type f | sort)
           if [ ${#ASSETS[@]} -eq 0 ]; then
             echo "No release assets found!"
@@ -137,11 +170,12 @@ jobs:
           Click the direct installer for your OS below (no zip extraction required):
 
           - **Windows (`x64`):** `KaleidoSync-Windows-Setup.exe` — double-click to install and run (creates Desktop & Start Menu shortcuts; if Windows SmartScreen warns about an unsigned app, click **More info → Run anyway**).
-          - **macOS (`arm64` Apple Silicon M1–M5 & `x64` Intel):** `KaleidoSync-macOS-arm64.dmg` or `KaleidoSync-macOS-x64.dmg` — ad-hoc signed for Apple Silicon & Intel. Open the `.dmg`, drag **KaleidoSync** to **Applications**, then either:
+          - **macOS (`arm64` Apple Silicon M1–M5 & `x64` Intel):** `KaleidoSync-macOS-arm64.dmg` or `KaleidoSync-macOS-x64.dmg` — signed for Apple Silicon & Intel. Open the `.dmg`, drag **KaleidoSync** to **Applications**, then either:
             - **System Settings → Privacy & Security → Open Anyway** (after first double-click on macOS Sequoia/Tahoe) or **right-click → Open**, OR
             - Run `xattr -cr /Applications/KaleidoSync.app` in Terminal (or install via 1-line Terminal command in README to avoid browser quarantine).
             - Allow **Screen & System Audio Recording** when prompted for system audio loopback.
           - **Linux (`x64`):** `KaleidoSync-Linux-x64.AppImage` (`chmod +x KaleidoSync-Linux-x64.AppImage && ./KaleidoSync-Linux-x64.AppImage`) or `KaleidoSync-Linux-x64.deb` (`sudo apt install ./KaleidoSync-Linux-x64.deb`). On PulseAudio/PipeWire, if System Audio loopback is unavailable, pick your `Monitor of ...` device under **Microphone / Line-In**.
+          - **Integrity:** `SHA256SUMS.txt` is included and verified automatically by the built-in updater before installing updates.
           EOF
 
           # Remove any stale or stuck draft release for this tag before publishing cleanly

@@ -11,10 +11,12 @@
       this.onApplyPreset = opts.onApplyPreset;
       this.onRefreshMics = opts.onRefreshMics;
       this.onMouseMove = opts.onMouseMove;
+      this.onToggleStageMode = opts.onToggleStageMode;
 
       this.panel = document.getElementById('control-panel');
       this.statusDot = document.getElementById('audio-dot');
       this.statusText = document.getElementById('audio-status-text');
+      this.audioMetaEl = document.getElementById('audio-meta');
       this.levelFill = document.getElementById('level-meter-fill');
       this.sourceSelect = document.getElementById('source-select');
       this.micRow = document.getElementById('mic-row');
@@ -24,15 +26,20 @@
       this.presetGrid = document.getElementById('preset-grid');
       this.modeGrid = document.getElementById('mode-grid');
       this.paletteGrid = document.getElementById('palette-grid');
+      this.layerModeSelect = document.getElementById('layer-mode-select');
+      this.layerBlendType = document.getElementById('layer-blend-type');
 
       this.startOverlay = document.getElementById('start-overlay');
       this.startBtn = document.getElementById('start-overlay-btn');
+      this.stageOverlay = document.getElementById('stage-active-overlay');
+      this.stageMetaEl = document.getElementById('stage-meta-text');
+      this.stageModeBtn = document.getElementById('btn-stage-mode');
+      this.stopStageBtn = document.getElementById('btn-stop-stage');
       this.silenceHint = document.getElementById('silence-hint');
       this.fpsBadge = document.getElementById('fps-badge');
       this.toastEl = document.getElementById('toast-badge');
       this.showUiBtn = document.getElementById('btn-show-ui');
       this.helpOverlay = document.getElementById('help-overlay');
-      this.riskyOverlay = document.getElementById('risky-overlay');
       this.appVersionEl = document.getElementById('app-version');
       this.updateBanner = document.getElementById('update-banner');
       this.updateTitle = document.getElementById('update-title');
@@ -46,14 +53,15 @@
       this.isFullscreen = false;
       this.isPointerDown = false;
       this.panelHovered = false;
-      this.riskyConfirmed = false;
-      this.pendingRiskyModeId = null;
       this.updating = false;
+      this.stageActive = false;
       this.idleTimer = null;
       this.toastTimer = null;
       this.lastLevelQ = -1;
       this.lastFpsUpdateMs = 0;
+      this.lastMetaUpdateMs = 0;
       this.lastFpsText = '';
+      this.lastMetaText = '';
       this.lastSilenceShown = null;
 
       this._buildLists();
@@ -64,7 +72,6 @@
     }
 
     _buildLists() {
-      // Genre Presets
       this.presetGrid.innerHTML = '';
       window.KS.GENRE_PRESETS.forEach((preset, idx) => {
         const btn = document.createElement('button');
@@ -77,38 +84,32 @@
         this.presetGrid.appendChild(btn);
       });
 
-      // Compiled Modes
       this.modeGrid.innerHTML = '';
+      this.layerModeSelect.innerHTML = '<option value="">Overlay: Off (Single Layer)</option>';
       this.compiledModes.forEach((mode) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = mode.risky ? 'mode-tile risky' : 'mode-tile';
+        btn.className = 'mode-tile';
         btn.dataset.mode = mode.id;
         const tagsHtml = (mode.tags || [])
-          .map((t) =>
-            mode.risky && t === 'Risky'
-              ? '<span class="mode-tag mode-tag-risky">&#9888; RISKY</span>'
-              : `<span class="mode-tag">${t}</span>`
-          )
+          .map((t) => `<span class="mode-tag">${t}</span>`)
           .join('');
         btn.innerHTML = `<div class="mode-name">${mode.name}</div><div class="mode-tags">${tagsHtml}</div>`;
         btn.addEventListener('click', () => {
-          if (mode.risky && !this.riskyConfirmed) {
-            this.openRiskyWarning(mode.id);
-            return;
-          }
+          const prevMode = this.settings.mode;
           this.settings.mode = mode.id;
           this.settings.preset = '';
-          this.onSettingChange('mode', mode.id);
+          this.onSettingChange('mode', mode.id, prevMode);
           this.syncFromSettings();
-          if (mode.risky) {
-            this.showToast(`⚠ ${mode.name} (Hypnotic)`, 2400);
-          }
         });
         this.modeGrid.appendChild(btn);
+
+        const opt = document.createElement('option');
+        opt.value = mode.id;
+        opt.textContent = `Overlay: ${mode.name}`;
+        this.layerModeSelect.appendChild(opt);
       });
 
-      // Palettes
       this.paletteGrid.innerHTML = '';
       window.KS.PALETTES.forEach((pal) => {
         const btn = document.createElement('button');
@@ -147,6 +148,17 @@
       bindRange('slider-sensitivity', 'sensitivity', (v) => `${v.toFixed(2)}x`);
       bindRange('slider-bloom', 'bloom', (v) => `${Math.round(v * 100)}%`);
       bindRange('slider-chromatic', 'chromatic', (v) => `${Math.round(v * 100)}%`);
+      bindRange('slider-layer-blend', 'layerBlend', (v) => `${Math.round(v * 100)}%`);
+
+      this.layerModeSelect.addEventListener('change', () => {
+        this.settings.layerMode = this.layerModeSelect.value;
+        this.onSettingChange('layerMode', this.settings.layerMode);
+      });
+
+      this.layerBlendType.addEventListener('change', () => {
+        this.settings.layerBlendType = parseInt(this.layerBlendType.value, 10);
+        this.onSettingChange('layerBlendType', this.settings.layerBlendType);
+      });
 
       const scaleSel = document.getElementById('render-scale-select');
       scaleSel.addEventListener('change', () => {
@@ -174,7 +186,9 @@
         });
       };
 
+      bindToggle('toggle-mood-autopilot', 'moodAutopilot');
       bindToggle('toggle-auto-cycle', 'autoCycle');
+      bindToggle('toggle-bpm-sync', 'bpmSync');
       bindToggle('toggle-beat-flash', 'beatFlash');
       bindToggle('toggle-beat-shake', 'beatShake');
       bindToggle('toggle-auto-quality', 'autoQuality');
@@ -214,6 +228,12 @@
         this.isFullscreen = true;
         this.showToast(`Display ${res.index + 1} / ${res.count}`);
       });
+      this.stageModeBtn.addEventListener('click', () => {
+        if (typeof this.onToggleStageMode === 'function') this.onToggleStageMode();
+      });
+      this.stopStageBtn.addEventListener('click', () => {
+        if (typeof this.onToggleStageMode === 'function') this.onToggleStageMode();
+      });
       document.getElementById('btn-hide-ui').addEventListener('click', () => this.setUiHidden(true));
       this.showUiBtn.addEventListener('click', () => this.setUiHidden(false));
       this.checkUpdateBtn.addEventListener('click', () => this.checkForUpdatesManual());
@@ -223,11 +243,6 @@
       document.getElementById('help-close-btn').addEventListener('click', () => this.toggleHelp(false));
       this.helpOverlay.addEventListener('click', (e) => {
         if (e.target === this.helpOverlay) this.toggleHelp(false);
-      });
-      document.getElementById('risky-cancel-btn').addEventListener('click', () => this.closeRiskyWarning());
-      document.getElementById('risky-confirm-btn').addEventListener('click', () => this.confirmRiskyMode());
-      this.riskyOverlay.addEventListener('click', (e) => {
-        if (e.target === this.riskyOverlay) this.closeRiskyWarning();
       });
 
       window.addEventListener('keydown', (e) => {
@@ -241,10 +256,6 @@
           return;
         }
         if (key === 'Escape') {
-          if (!this.riskyOverlay.classList.contains('hidden')) {
-            this.closeRiskyWarning();
-            return;
-          }
           if (!this.helpOverlay.classList.contains('hidden')) {
             this.toggleHelp(false);
             return;
@@ -331,11 +342,21 @@
       const delay = this.uiHidden ? 2500 : 3000;
       this.idleTimer = setTimeout(() => {
         const helpOpen = !this.helpOverlay.classList.contains('hidden');
-        const riskyOpen = !this.riskyOverlay.classList.contains('hidden');
-        if (!this.isPointerDown && !this.panelHovered && !helpOpen && !riskyOpen && !window.__KS_KEEP_UI_VISIBLE) {
+        if (!this.isPointerDown && !this.panelHovered && !helpOpen && !this.stageActive && !window.__KS_KEEP_UI_VISIBLE) {
           document.body.classList.add('idle-hidden');
         }
       }, delay);
+    }
+
+    setStageActive(active) {
+      this.stageActive = !!active;
+      this.stageOverlay.classList.toggle('hidden', !this.stageActive);
+      this.stageModeBtn.textContent = this.stageActive ? 'Stop Stage Mode' : 'Stage Mode (2nd Screen)';
+      if (this.stageActive) {
+        document.body.classList.remove('idle-hidden');
+      } else {
+        this._resetIdleTimer();
+      }
     }
 
     async toggleFullscreen() {
@@ -362,40 +383,15 @@
       if (show) document.body.classList.remove('idle-hidden');
     }
 
-    openRiskyWarning(modeId) {
-      this.pendingRiskyModeId = modeId;
-      this.riskyOverlay.classList.remove('hidden');
-      document.body.classList.remove('idle-hidden');
-    }
-
-    closeRiskyWarning() {
-      this.pendingRiskyModeId = null;
-      this.riskyOverlay.classList.add('hidden');
-    }
-
-    confirmRiskyMode() {
-      const modeId = this.pendingRiskyModeId;
-      this.riskyConfirmed = true;
-      this.closeRiskyWarning();
-      if (!modeId) return;
-      const mode = this.compiledModes.find((m) => m.id === modeId);
-      this.settings.mode = modeId;
-      this.settings.preset = '';
-      this.onSettingChange('mode', modeId);
-      this.syncFromSettings();
-      this.showToast(`⚠ ${mode ? mode.name : modeId} (Hypnotic)`, 2400);
-    }
-
     stepMode(delta) {
-      const safeModes = this.compiledModes.filter((m) => !m.risky);
-      const list = safeModes.length > 0 ? safeModes : this.compiledModes;
-      if (list.length === 0) return;
-      const idx = list.findIndex((m) => m.id === this.settings.mode);
-      const next = idx === -1 ? 0 : (idx + delta + list.length) % list.length;
-      const mode = list[next];
+      if (this.compiledModes.length === 0) return;
+      const idx = this.compiledModes.findIndex((m) => m.id === this.settings.mode);
+      const next = (idx + delta + this.compiledModes.length) % this.compiledModes.length;
+      const mode = this.compiledModes[next];
+      const prevMode = this.settings.mode;
       this.settings.mode = mode.id;
       this.settings.preset = '';
-      this.onSettingChange('mode', mode.id);
+      this.onSettingChange('mode', mode.id, prevMode);
       this.syncFromSettings();
       this.showToast(mode.name);
     }
@@ -413,20 +409,19 @@
     }
 
     shuffleModeAndPalette() {
-      const safeModes = this.compiledModes.filter((m) => !m.risky);
-      const list = safeModes.length > 0 ? safeModes : this.compiledModes;
-      if (list.length === 0) return;
+      if (this.compiledModes.length === 0) return;
       const pals = window.KS.PALETTES;
-      let nextMode = list[Math.floor(Math.random() * list.length)];
-      if (list.length > 1 && nextMode.id === this.settings.mode) {
-        const idx = list.indexOf(nextMode);
-        nextMode = list[(idx + 1) % list.length];
+      let nextMode = this.compiledModes[Math.floor(Math.random() * this.compiledModes.length)];
+      if (this.compiledModes.length > 1 && nextMode.id === this.settings.mode) {
+        const idx = this.compiledModes.indexOf(nextMode);
+        nextMode = this.compiledModes[(idx + 1) % this.compiledModes.length];
       }
       const nextPal = pals[Math.floor(Math.random() * pals.length)];
+      const prevMode = this.settings.mode;
       this.settings.mode = nextMode.id;
       this.settings.palette = nextPal.id;
       this.settings.preset = '';
-      this.onSettingChange('mode', nextMode.id);
+      this.onSettingChange('mode', nextMode.id, prevMode);
       this.onSettingChange('palette', nextPal.id);
       this.syncFromSettings();
       this.showToast(`${nextMode.name} · ${nextPal.name}`);
@@ -495,7 +490,10 @@
         if (!p) return;
         const pct = Math.max(0, Math.min(100, p.percent || 0));
         this.updateProgressFill.style.transform = `scaleX(${pct / 100})`;
-        if (p.phase === 'installing') {
+        if (p.phase === 'verifying') {
+          this.installUpdateBtn.textContent = 'Verifying…';
+          this.updateStatus.textContent = 'Verifying SHA-256…';
+        } else if (p.phase === 'installing') {
           this.installUpdateBtn.textContent = 'Restarting…';
           this.updateStatus.textContent = 'Replacing app & restarting…';
         } else {
@@ -553,11 +551,27 @@
     }
 
     updateRuntimeIndicators(audio, fps, now) {
-      if (!this.uiHidden && !document.body.classList.contains('idle-hidden')) {
+      const ts = now || performance.now();
+      const panelVisible = !this.uiHidden && !document.body.classList.contains('idle-hidden');
+      if (panelVisible) {
         const q = Math.round(Math.min(1, audio.level) * 100) / 100;
         if (q !== this.lastLevelQ) {
           this.lastLevelQ = q;
           this.levelFill.style.transform = `scaleX(${q})`;
+        }
+      }
+
+      if ((panelVisible || this.stageActive) && ts - this.lastMetaUpdateMs >= 300) {
+        this.lastMetaUpdateMs = ts;
+        const bpmStr = audio.bpm >= 45 ? `${Math.round(audio.bpm)} BPM` : 'Live';
+        const moodStr = audio.mood ? audio.mood.charAt(0).toUpperCase() + audio.mood.slice(1) : 'Calm';
+        const metaText = `${bpmStr} · Mood: ${moodStr}`;
+        if (metaText !== this.lastMetaText) {
+          this.lastMetaText = metaText;
+          this.audioMetaEl.textContent = metaText;
+          if (this.stageActive) {
+            this.stageMetaEl.textContent = `Streaming live (${metaText}) — controls stay here.`;
+          }
         }
       }
 
@@ -569,15 +583,12 @@
 
       const showFps = !!this.settings.showFps;
       this.fpsBadge.classList.toggle('hidden', !showFps);
-      if (showFps) {
-        const ts = now || performance.now();
-        if (ts - this.lastFpsUpdateMs >= 250) {
-          this.lastFpsUpdateMs = ts;
-          const text = `${Math.round(fps)} FPS`;
-          if (text !== this.lastFpsText) {
-            this.lastFpsText = text;
-            this.fpsBadge.textContent = text;
-          }
+      if (showFps && ts - this.lastFpsUpdateMs >= 250) {
+        this.lastFpsUpdateMs = ts;
+        const text = `${Math.round(fps)} FPS`;
+        if (text !== this.lastFpsText) {
+          this.lastFpsText = text;
+          this.fpsBadge.textContent = text;
         }
       }
     }
@@ -585,6 +596,12 @@
     syncFromSettings() {
       this.sourceSelect.value = this.settings.source;
       this.micRow.style.display = this.settings.source === 'mic' ? 'flex' : 'none';
+
+      this.layerModeSelect.value = this.settings.layerMode || '';
+      this.layerBlendType.value = String(this.settings.layerBlendType != null ? this.settings.layerBlendType : 1);
+      const lbVal = this.settings.layerBlend != null ? this.settings.layerBlend : 0.45;
+      document.getElementById('slider-layer-blend').value = lbVal;
+      document.getElementById('slider-layer-blend-val').textContent = `${Math.round(lbVal * 100)}%`;
 
       document.getElementById('slider-segments').value = this.settings.segments;
       document.getElementById('slider-segments-val').textContent = `${Math.round(this.settings.segments)}x`;
@@ -613,7 +630,9 @@
       document.getElementById('fps-cap-select').value = String(this.settings.fpsCap);
       document.getElementById('cycle-interval-select').value = String(this.settings.cycleInterval);
 
+      document.getElementById('toggle-mood-autopilot').checked = !!this.settings.moodAutopilot;
       document.getElementById('toggle-auto-cycle').checked = !!this.settings.autoCycle;
+      document.getElementById('toggle-bpm-sync').checked = this.settings.bpmSync !== false;
       document.getElementById('toggle-beat-flash').checked = !!this.settings.beatFlash;
       document.getElementById('toggle-beat-shake').checked = this.settings.beatShake !== false;
       document.getElementById('toggle-auto-quality').checked = this.settings.autoQuality !== false;

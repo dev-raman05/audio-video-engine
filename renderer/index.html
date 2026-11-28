@@ -58,6 +58,7 @@
           <span id="audio-dot" class="status-dot" data-state="idle"></span>
           <span id="audio-status-text">Initializing…</span>
         </div>
+        <div id="audio-meta" class="audio-meta">Live · Calm</div>
         <div class="level-meter">
           <div id="level-meter-fill"></div>
         </div>
@@ -76,6 +77,24 @@
       <section class="section">
         <div class="section-title">Color Palette (P)</div>
         <div id="palette-grid" class="palette-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">VJ Dual-Layer</div>
+        <div class="row">
+          <select id="layer-mode-select"></select>
+        </div>
+        <div class="row">
+          <select id="layer-blend-type">
+            <option value="1">Blend: Screen Glow</option>
+            <option value="0">Blend: Crossfade Mix</option>
+            <option value="2">Blend: Prism Invert</option>
+          </select>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label"><span>Layer Mix</span><span id="slider-layer-blend-val">45%</span></div>
+          <input id="slider-layer-blend" type="range" min="0" max="1" step="0.05" value="0.45">
+        </div>
       </section>
 
       <section class="section">
@@ -133,6 +152,10 @@
       <section class="section">
         <div class="section-title">Behavior &amp; Display</div>
         <div class="toggle-row">
+          <label for="toggle-mood-autopilot">Mood Auto-Pilot (Genre)</label>
+          <input id="toggle-mood-autopilot" type="checkbox">
+        </div>
+        <div class="toggle-row">
           <label for="toggle-auto-cycle">Auto-Cycle Modes (A)</label>
           <div class="row">
             <select id="cycle-interval-select" style="flex:0 0 auto; padding:2px 6px;">
@@ -142,6 +165,10 @@
             </select>
             <input id="toggle-auto-cycle" type="checkbox">
           </div>
+        </div>
+        <div class="toggle-row">
+          <label for="toggle-bpm-sync">BPM &amp; Drop Sync</label>
+          <input id="toggle-bpm-sync" type="checkbox" checked>
         </div>
         <div class="toggle-row">
           <label for="toggle-beat-flash">Beat Flash</label>
@@ -169,12 +196,21 @@
         <div class="btn-grid">
           <button id="btn-fullscreen" class="btn" type="button">Fullscreen (F)</button>
           <button id="btn-next-display" class="btn" type="button">Next Display</button>
+          <button id="btn-stage-mode" class="btn" type="button" style="grid-column: span 2;">Stage Mode (2nd Screen)</button>
           <button id="btn-hide-ui" class="btn" type="button" style="grid-column: span 2;">Hide Panel (H)</button>
           <button id="btn-check-update" class="btn" type="button" style="grid-column: span 2;">Check Updates</button>
         </div>
       </section>
     </div>
   </aside>
+
+  <div id="stage-active-overlay" class="overlay stage-card-wrap hidden">
+    <div class="overlay-card">
+      <h2>Projecting Live to Stage Output</h2>
+      <p id="stage-meta-text">Streaming visuals to your stage display while keeping controls here.</p>
+      <button id="btn-stop-stage" class="btn btn-primary" type="button">Stop Stage Output</button>
+    </div>
+  </div>
 
   <div id="start-overlay" class="overlay hidden">
     <div class="overlay-card">
@@ -201,17 +237,6 @@
         <span class="kbd">?</span><span>Show / hide this help</span>
       </div>
       <button id="help-close-btn" class="btn btn-primary" type="button">Close</button>
-    </div>
-  </div>
-
-  <div id="risky-overlay" class="overlay hidden">
-    <div class="overlay-card risky-card">
-      <h2>&#9888; High-Intensity Hypnotic Visual</h2>
-      <p>Trance Spiral uses continuous counter-rotating logarithmic spirals and central fixation designed to induce strong motion aftereffects and drowsiness. Avoid if photosensitive, prone to motion sickness, or needing to stay alert.</p>
-      <div class="row" style="justify-content:flex-end;">
-        <button id="risky-cancel-btn" class="btn" type="button">Cancel</button>
-        <button id="risky-confirm-btn" class="btn btn-danger" type="button">Continue Anyway</button>
-      </div>
     </div>
   </div>
 

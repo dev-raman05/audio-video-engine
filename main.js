@@ -25,6 +25,7 @@ if (!gotLock) {
 }
 
 let mainWindow = null;
+let stageWindow = null;
 let powerBlockerId = null;
 let smokeWatchdog = null;
 
@@ -63,7 +64,55 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (stageWindow && !stageWindow.isDestroyed()) {
+      stageWindow.close();
+    }
   });
+}
+
+function toggleStageWindow() {
+  if (stageWindow && !stageWindow.isDestroyed()) {
+    stageWindow.close();
+    stageWindow = null;
+    return { active: false };
+  }
+
+  const displays = screen.getAllDisplays();
+  const winBounds = mainWindow ? mainWindow.getBounds() : { x: 0, y: 0, width: 1280, height: 760 };
+  const currentDisplay = screen.getDisplayMatching(winBounds);
+  const external = displays.find((d) => d.id !== currentDisplay.id) || null;
+  const target = external || currentDisplay;
+
+  stageWindow = new BrowserWindow({
+    x: external ? target.bounds.x : target.bounds.x + 60,
+    y: external ? target.bounds.y : target.bounds.y + 60,
+    width: external ? target.bounds.width : Math.min(1280, target.workArea.width - 120),
+    height: external ? target.bounds.height : Math.min(720, target.workArea.height - 120),
+    fullscreen: !!external,
+    backgroundColor: '#000000',
+    autoHideMenuBar: true,
+    title: 'KaleidoSync — Stage Output',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+
+  stageWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), {
+    query: { stage: '1' },
+  });
+
+  stageWindow.on('closed', () => {
+    stageWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ks:stageState', { active: false });
+    }
+  });
+
+  return { active: true, external: !!external, displays: displays.length };
 }
 
 app.on('second-instance', () => {
@@ -97,17 +146,19 @@ app.whenReady().then(() => {
     session.defaultSession.setDisplayMediaRequestHandler(displayMediaHandler);
   }
 
-  ipcMain.handle('ks:toggleFullscreen', () => {
-    if (!mainWindow) return false;
-    const next = !mainWindow.isFullScreen();
-    mainWindow.setFullScreen(next);
+  ipcMain.handle('ks:toggleFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (!win) return false;
+    const next = !win.isFullScreen();
+    win.setFullScreen(next);
     return next;
   });
 
-  ipcMain.handle('ks:setFullscreen', (_event, enabled) => {
-    if (!mainWindow) return false;
-    mainWindow.setFullScreen(!!enabled);
-    return mainWindow.isFullScreen();
+  ipcMain.handle('ks:setFullscreen', (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+    if (!win) return false;
+    win.setFullScreen(!!enabled);
+    return win.isFullScreen();
   });
 
   ipcMain.handle('ks:setAlwaysOnTop', (_event, enabled) => {
@@ -147,6 +198,14 @@ app.whenReady().then(() => {
     });
     mainWindow.setFullScreen(true);
     return { index: nextIdx, count: displays.length };
+  });
+
+  ipcMain.handle('ks:toggleStageMode', () => toggleStageWindow());
+
+  ipcMain.on('ks:stageFrame', (_event, payload) => {
+    if (stageWindow && !stageWindow.isDestroyed() && !stageWindow.webContents.isLoading()) {
+      stageWindow.webContents.send('ks:stageFrame', payload);
+    }
   });
 
   ipcMain.handle('ks:isSmoke', () => isSmoke);
