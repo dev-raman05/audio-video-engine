@@ -216,10 +216,23 @@
     }
 
     // Normal mode: auto-connect selected source
+    const ver = await window.kaleido.getVersion();
+    ui.setVersion(ver);
+
     const connRes = await connectAudio();
     if (!connRes.ok && settings.source === 'system') {
       ui.showStartOverlay();
     }
+
+    setTimeout(async () => {
+      try {
+        const upd = await window.kaleido.checkForUpdates();
+        if (upd && upd.ok && upd.updateAvailable) {
+          ui.showUpdateBanner(upd);
+          ui.showToast(`Update v${upd.latestVersion} available — click Install & Restart`, 3200);
+        }
+      } catch (_err) {}
+    }, 3000);
   }
 
   window.addEventListener('DOMContentLoaded', bootstrap);

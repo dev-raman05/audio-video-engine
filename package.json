@@ -1,6 +1,6 @@
 {
   "name": "kaleidosync",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Cross-platform (Windows, macOS, Linux) audio-reactive WebGL2 kaleidoscope visualizer",
   "homepage": "https://github.com/dev-raman05/audio-video-engine",
   "main": "main.js",
@@ -25,6 +25,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "updater.js",
       "renderer/**/*",
       "package.json"
     ],
@@ -48,6 +49,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
       "artifactName": "KaleidoSync-Windows-Setup.exe"
     },
     "mac": {

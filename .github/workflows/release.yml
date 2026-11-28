@@ -50,6 +50,7 @@ jobs:
         run: |
           node --check main.js
           node --check preload.js
+          node --check updater.js
           for f in renderer/js/*.js; do
             node --check "$f"
           done

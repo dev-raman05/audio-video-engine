@@ -21,6 +21,9 @@ curl -L -o /tmp/KaleidoSync.dmg https://github.com/dev-raman05/audio-video-engin
 
 You can also browse **[All Releases](https://github.com/dev-raman05/audio-video-engine/releases)**.
 
+### 1-Click In-Place Updates (No Reinstall Hassle)
+Once installed, KaleidoSync checks GitHub Releases automatically on startup (or anytime via **Check Updates**). When a new version is out, click **Install & Restart** right inside the app—it downloads the matching installer for your OS (Windows `.exe`, macOS `.dmg` `arm64`/`x64`, or Linux `.AppImage`/`.deb`), updates your existing installation **in place** while keeping your settings, and relaunches automatically.
+
 ---
 
 ## Features

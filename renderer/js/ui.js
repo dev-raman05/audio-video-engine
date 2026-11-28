@@ -33,6 +33,14 @@
       this.showUiBtn = document.getElementById('btn-show-ui');
       this.helpOverlay = document.getElementById('help-overlay');
       this.riskyOverlay = document.getElementById('risky-overlay');
+      this.appVersionEl = document.getElementById('app-version');
+      this.updateBanner = document.getElementById('update-banner');
+      this.updateTitle = document.getElementById('update-title');
+      this.updateStatus = document.getElementById('update-status');
+      this.updateProgress = document.getElementById('update-progress');
+      this.updateProgressFill = document.getElementById('update-progress-fill');
+      this.installUpdateBtn = document.getElementById('btn-install-update');
+      this.checkUpdateBtn = document.getElementById('btn-check-update');
 
       this.uiHidden = false;
       this.isFullscreen = false;
@@ -40,6 +48,7 @@
       this.panelHovered = false;
       this.riskyConfirmed = false;
       this.pendingRiskyModeId = null;
+      this.updating = false;
       this.idleTimer = null;
       this.toastTimer = null;
       this.lastLevelQ = -1;
@@ -207,6 +216,8 @@
       });
       document.getElementById('btn-hide-ui').addEventListener('click', () => this.setUiHidden(true));
       this.showUiBtn.addEventListener('click', () => this.setUiHidden(false));
+      this.checkUpdateBtn.addEventListener('click', () => this.checkForUpdatesManual());
+      this.installUpdateBtn.addEventListener('click', () => this.installUpdate());
       document.getElementById('btn-shuffle').addEventListener('click', () => this.shuffleModeAndPalette());
       document.getElementById('btn-help').addEventListener('click', () => this.toggleHelp());
       document.getElementById('help-close-btn').addEventListener('click', () => this.toggleHelp(false));
@@ -436,6 +447,78 @@
       this.toastTimer = setTimeout(() => {
         this.toastEl.classList.add('hidden');
       }, durationMs || 1800);
+    }
+
+    setVersion(version) {
+      if (this.appVersionEl && version) {
+        this.appVersionEl.textContent = `· v${version}`;
+      }
+    }
+
+    showUpdateBanner(info) {
+      if (!info || !info.updateAvailable) return;
+      const mb = info.assetSize ? `${(info.assetSize / 1048576).toFixed(0)} MB · ` : '';
+      this.updateTitle.textContent = `Update v${info.latestVersion}`;
+      this.updateStatus.textContent = `${mb}Replaces app in place`;
+      this.updateBanner.classList.remove('hidden');
+    }
+
+    async checkForUpdatesManual() {
+      if (this.updating) return;
+      this.checkUpdateBtn.disabled = true;
+      this.checkUpdateBtn.textContent = 'Checking…';
+      try {
+        const res = await window.kaleido.checkForUpdates();
+        if (!res || !res.ok) {
+          this.showToast(res && res.error ? res.error : 'Update check failed', 2600);
+        } else if (res.updateAvailable) {
+          this.showUpdateBanner(res);
+          this.showToast(`Update v${res.latestVersion} available`, 2400);
+        } else {
+          this.showToast(`Up to date (v${res.currentVersion})`);
+        }
+      } finally {
+        this.checkUpdateBtn.disabled = false;
+        this.checkUpdateBtn.textContent = 'Check Updates';
+      }
+    }
+
+    async installUpdate() {
+      if (this.updating) return;
+      this.updating = true;
+      this.installUpdateBtn.disabled = true;
+      this.installUpdateBtn.textContent = 'Downloading…';
+      this.updateProgress.classList.remove('hidden');
+      this.updateProgressFill.style.transform = 'scaleX(0)';
+
+      const off = window.kaleido.onUpdateProgress((p) => {
+        if (!p) return;
+        const pct = Math.max(0, Math.min(100, p.percent || 0));
+        this.updateProgressFill.style.transform = `scaleX(${pct / 100})`;
+        if (p.phase === 'installing') {
+          this.installUpdateBtn.textContent = 'Restarting…';
+          this.updateStatus.textContent = 'Replacing app & restarting…';
+        } else {
+          this.updateStatus.textContent = `Downloading ${pct}%`;
+        }
+      });
+
+      try {
+        const res = await window.kaleido.installUpdate();
+        if (!res || !res.ok) {
+          this.updating = false;
+          this.installUpdateBtn.disabled = false;
+          this.installUpdateBtn.textContent = 'Install & Restart';
+          this.updateProgress.classList.add('hidden');
+          this.updateStatus.textContent = (res && res.error) || 'Update failed';
+          this.showToast(this.updateStatus.textContent, 3000);
+          if (res && res.devMode && res.releaseUrl) {
+            window.kaleido.openExternal(res.releaseUrl);
+          }
+        }
+      } finally {
+        if (typeof off === 'function') off();
+      }
     }
 
     showStartOverlay() {

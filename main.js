@@ -8,9 +8,11 @@ const {
   desktopCapturer,
   powerSaveBlocker,
   screen,
+  shell,
 } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const updater = require('./updater');
 
 const isSmoke = process.argv.includes('--smoke-test');
 
@@ -148,6 +150,34 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('ks:isSmoke', () => isSmoke);
+
+  ipcMain.handle('ks:getVersion', () => app.getVersion());
+
+  ipcMain.handle('ks:checkForUpdates', () => updater.checkForUpdates(app.getVersion()));
+
+  ipcMain.handle('ks:installUpdate', () =>
+    updater.downloadAndInstallUpdate({
+      currentVersion: app.getVersion(),
+      isPackaged: app.isPackaged,
+      exePath: app.getPath('exe'),
+      onProgress: (data) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('ks:updateProgress', data);
+        }
+      },
+      onQuit: () => {
+        stopKeepAwake();
+        app.quit();
+      },
+    })
+  );
+
+  ipcMain.handle('ks:openExternal', (_event, url) => {
+    if (typeof url === 'string' && url.startsWith('https://github.com/dev-raman05/audio-video-engine')) {
+      return shell.openExternal(url);
+    }
+    return false;
+  });
 
   ipcMain.handle('ks:capture', async (_event, name) => {
     if (!mainWindow) return null;
