@@ -170,6 +170,7 @@
             id: mode.id,
             name: mode.name,
             tags: mode.tags,
+            risky: !!mode.risky,
             program: res.program,
             u: this._getUniforms(res.program, modeUniforms),
           };

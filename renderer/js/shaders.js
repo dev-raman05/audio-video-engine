@@ -870,6 +870,46 @@ void main() {
 }
 `,
     },
+    {
+      id: 'hypnotic-vortex',
+      name: 'Trance Spiral',
+      tags: ['Risky', 'Hypnotic'],
+      risky: true,
+      frag: `
+void main() {
+  vec2 p = normUv();
+  float r = length(p);
+  float a = atan(p.y, p.x);
+
+  float arms = max(3.0, floor(uSegments * 0.5) * 2.0);
+  float t = uTime * 0.85;
+  float breath = 0.5 + 0.5 * sin(uTime * 0.95);
+  float logR = log(r + 0.018);
+
+  float s = spec(clamp(r * 0.45, 0.02, 0.92));
+  float warp = 0.22 * sin(logR * 2.6 - t * 0.7) * (0.4 + uMid);
+
+  float sp1 = sin(logR * 7.8 - a * arms - t * 1.15 + warp - uSubBass * 0.55);
+  float sp2 = sin(logR * 4.6 + a * (arms * 0.5) + t * 0.68 + s * 0.9);
+  float moire = 0.5 + 0.5 * (sp1 * 0.62 + sp2 * 0.38);
+
+  float haze = fbm(vec2(logR * 1.8 - t * 0.25, sin(a * 2.0) + cos(a * 2.0)));
+  float rings = 0.5 + 0.5 * sin(logR * 11.5 - t * 1.65 + uBass * 0.9);
+  float band = smoothstep(0.14, 0.88, mix(moire, rings, 0.32 + 0.2 * breath));
+
+  float periphFade = smoothstep(1.65, 0.12, r + 0.12 * (1.0 - breath));
+  float fixation = exp(-r * 14.0) * (0.75 + 0.35 * breath + uBeat * 0.2);
+
+  vec3 velvet = pal(logR * 0.28 - t * 0.08 + haze * 0.35);
+  vec3 prism = pal(sp1 * 0.35 + sp2 * 0.25 + 0.45);
+  vec3 col = mix(velvet * 0.18, prism * (0.75 + 0.55 * s), band) * periphFade;
+  col += pal(0.15 + breath * 0.25) * fixation * 1.35;
+  col += velvet * haze * 0.22 * (0.4 + uLevel) * periphFade;
+
+  fragColor = vec4(col * uIntensity, 1.0);
+}
+`,
+    },
   ];
 
   const COMPOSITE_FRAG = `#version 300 es

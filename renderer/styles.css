@@ -166,6 +166,17 @@ select:hover {
   background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
 }
 
+.btn-danger {
+  background: linear-gradient(135deg, #dc2626, #f59e0b);
+  border: none;
+  color: #ffffff;
+  font-weight: 600;
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+  background: linear-gradient(135deg, #dc2626, #f59e0b);
+}
+
 .status-row {
   display: flex;
   align-items: center;
@@ -274,6 +285,19 @@ select:hover {
   background: linear-gradient(145deg, rgba(124, 92, 255, 0.36), rgba(0, 212, 255, 0.22));
   border-color: rgba(0, 212, 255, 0.75);
 }
+.mode-tile.risky {
+  border-color: rgba(245, 158, 11, 0.65);
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.16), rgba(245, 158, 11, 0.12));
+}
+.mode-tile.risky:hover {
+  border-color: rgba(245, 158, 11, 0.9);
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.26), rgba(245, 158, 11, 0.2));
+}
+.mode-tile.risky.active {
+  border-color: #f59e0b;
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.38), rgba(245, 158, 11, 0.28));
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.28);
+}
 .mode-name {
   font-size: 12px;
   font-weight: 600;
@@ -289,6 +313,15 @@ select:hover {
   background: rgba(0, 0, 0, 0.28);
   padding: 1px 5px;
   border-radius: 4px;
+}
+.mode-tag-risky {
+  color: #fde68a;
+  background: rgba(220, 38, 38, 0.55);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  font-weight: 600;
+}
+.risky-card {
+  border-color: rgba(245, 158, 11, 0.55);
 }
 
 /* Palettes */
